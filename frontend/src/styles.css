@@ -1,0 +1,81 @@
+html,
+body,
+#root {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  overflow-x: hidden;
+}
+
+.geo-app-layout,
+.geo-main-layout,
+.ant-layout {
+  min-width: 0;
+}
+
+.geo-main-layout {
+  width: 100%;
+}
+
+.geo-sidebar {
+  flex: 0 0 200px !important;
+  min-width: 200px !important;
+  max-width: 200px !important;
+}
+
+.geo-page-content {
+  min-width: 0;
+  max-width: calc(100vw - 232px);
+  overflow: hidden;
+}
+
+.geo-page-content > * {
+  min-width: 0;
+}
+
+.ant-tabs,
+.ant-tabs-content,
+.ant-tabs-tabpane,
+.ant-card,
+.ant-spin-nested-loading,
+.ant-spin-container {
+  min-width: 0;
+}
+
+.geo-safe-table {
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.geo-safe-table .ant-table-wrapper,
+.geo-safe-table .ant-table {
+  max-width: 100%;
+}
+
+.geo-safe-table .ant-table-content {
+  overflow-x: auto !important;
+}
+
+.geo-safe-table .ant-table-cell {
+  word-break: break-word;
+}
+
+.geo-safe-table .ant-table-cell-ellipsis {
+  white-space: nowrap;
+}
+
+.geo-safe-table .ant-table-cell-fix-right,
+.geo-safe-table .ant-table-cell-fix-right-first::after,
+.geo-safe-table .ant-table-cell-fix-right-last::after {
+  background: #fff;
+}
+
+.geo-table-action-cell .ant-space {
+  max-width: 100%;
+  row-gap: 4px;
+}
+
+.geo-table-action-cell .ant-btn-link {
+  padding-inline: 4px;
+}

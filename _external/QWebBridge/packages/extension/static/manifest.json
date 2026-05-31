@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "QwebBridge",
+  "version": "1.0.0",
+  "description": "Browser bridge for AI agents",
+  "permissions": [
+    "tabs",
+    "activeTab",
+    "debugger",
+    "storage",
+    "alarms",
+    "tabGroups",
+    "windows"
+  ],
+  "host_permissions": ["<all_urls>"],
+  "incognito": "spanning",
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' ws://127.0.0.1:* http://127.0.0.1:*"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup-fixed.html"
+  }
+}

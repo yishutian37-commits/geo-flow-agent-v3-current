@@ -1,0 +1,77 @@
+{
+  "name": "geo-flow-agent-desktop",
+  "version": "2.3.0",
+  "private": true,
+  "description": "GEO Flow Agent V2.3 desktop app",
+  "main": "desktop/main.js",
+  "scripts": {
+    "frontend:build": "npm --prefix frontend run build",
+    "qwebbridge:build": "node scripts/build-qwebbridge.mjs",
+    "backend:bundle": "cd backend && .venv\\Scripts\\pyinstaller.exe --clean --noconfirm geo-flow-backend.spec",
+    "desktop:dev": "electron .",
+    "build": "npm run frontend:build && npm run qwebbridge:build",
+    "dist:folder": "npm run frontend:build && npm run qwebbridge:build && npm run backend:bundle && electron-builder --win dir",
+    "dist:win": "npm run frontend:build && npm run qwebbridge:build && npm run backend:bundle && electron-builder --win",
+    "dist:portable": "npm run frontend:build && npm run qwebbridge:build && npm run backend:bundle && electron-builder --win portable"
+  },
+  "devDependencies": {
+    "electron": "^28.3.3",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.geoflow.agent",
+    "productName": "GEO Flow Agent",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "desktop/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "frontend/build",
+        "to": "frontend"
+      },
+      {
+        "from": "backend/dist/geo-flow-backend",
+        "to": "backend"
+      },
+      {
+        "from": "_external/QWebBridge/packages/daemon/dist",
+        "to": "qwebbridge/daemon"
+      },
+      {
+        "from": "_external/QWebBridge/packages/daemon/package.json",
+        "to": "qwebbridge/daemon/package.json"
+      },
+      {
+        "from": "_external/QWebBridge/packages/daemon/node_modules/ws",
+        "to": "qwebbridge/daemon/node_modules/ws"
+      },
+      {
+        "from": "_external/QWebBridge/packages/extension/dist",
+        "to": "qwebbridge/extension"
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "desktop/assets/icon.ico",
+      "requestedExecutionLevel": "asInvoker",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "GEO Flow Agent"
+    },
+    "portable": {
+      "artifactName": "GEO-Flow-Agent-${version}-Portable.${ext}"
+    }
+  }
+}

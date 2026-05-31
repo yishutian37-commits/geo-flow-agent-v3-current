@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>QWebBridge</title>
+  <style>
+    body { width: 320px; margin: 0; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #111827; background: #fff; }
+    .wrap { padding: 14px; }
+    .header { display: flex; align-items: center; gap: 8px; padding-bottom: 12px; border-bottom: 1px solid #e5e7eb; cursor: pointer; user-select: none; }
+    .logo { width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; color: #fff; background: #1677ff; font-weight: 700; }
+    .title { font-size: 15px; font-weight: 700; }
+    .status { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 24px 0 18px; text-align: center; }
+    .dot { width: 42px; height: 42px; border-radius: 999px; display: grid; place-items: center; font-size: 24px; background: #fee2e2; color: #dc2626; }
+    .dot.connected { background: #dcfce7; color: #16a34a; }
+    .status-text { font-size: 14px; font-weight: 600; }
+    .muted { color: #6b7280; font-size: 12px; line-height: 1.6; }
+    .row { display: flex; gap: 8px; }
+    .row > input { flex: 1; }
+    input { box-sizing: border-box; width: 100%; padding: 8px 9px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 12px; }
+    label { display: block; margin-bottom: 6px; font-size: 12px; font-weight: 600; }
+    button { border: 1px solid #d1d5db; border-radius: 6px; background: #fff; padding: 7px 10px; font-size: 12px; cursor: pointer; }
+    button.primary { border-color: #1677ff; background: #1677ff; color: #fff; }
+    button:disabled { opacity: .6; cursor: default; }
+    .actions { display: flex; justify-content: space-between; gap: 8px; margin-top: 12px; }
+    .hidden { display: none; }
+    .result { margin-top: 7px; font-size: 12px; }
+    .ok { color: #16a34a; }
+    .fail { color: #dc2626; }
+    .panel { padding-top: 14px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="header" id="logo-area" title="Open connection settings">
+      <div class="logo">Q</div>
+      <div>
+        <div class="title">QWebBridge</div>
+        <div class="muted">Browser automation helper</div>
+      </div>
+    </div>
+    <div id="main-content">
+      <div class="status">
+        <div class="dot" id="status-icon">x</div>
+        <div class="status-text" id="status-text">Browser helper is not ready</div>
+        <div class="muted" id="status-desc">Make sure GEO Flow Agent is running and port 10087 is available.</div>
+      </div>
+      <div class="actions">
+        <button id="refresh-status">Refresh</button>
+        <button class="primary" id="open-settings">Connection</button>
+      </div>
+    </div>
+    <div id="dev-settings" class="panel hidden">
+      <label for="ws-url">Daemon WebSocket URL</label>
+      <div class="row">
+        <input type="url" id="ws-url" value="ws://127.0.0.1:10087/selector/command">
+        <button id="dev-test-btn">Test</button>
+      </div>
+      <div id="dev-test-result" class="result hidden"></div>
+      <div class="actions">
+        <button id="dev-reset">Reset</button>
+        <div>
+          <button id="dev-exit">Back</button>
+          <button class="primary" id="dev-save">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="popup-fixed.js"></script>
+</body>
+</html>

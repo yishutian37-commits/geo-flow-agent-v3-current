@@ -1,0 +1,447 @@
+{
+  "models": [
+    {
+      "id": "openai:gpt-4o",
+      "provider": "openai",
+      "model": "gpt-4o",
+      "name": "OpenAI - GPT-4o",
+      "api_key": "sk-test-12345",
+      "base_url": "https://custom.openai.com/v1",
+      "is_custom": false,
+      "is_active": true,
+      "is_default": false,
+      "input_price_per_1k": 0.01,
+      "output_price_per_1k": 0.02,
+      "context_length": 128000,
+      "description": "GPT-4o | 上下文: 128000",
+      "tags": [
+        "long-context"
+      ],
+      "created_at": ""
+    },
+    {
+      "id": "openai:gpt-4o-mini",
+      "provider": "openai",
+      "model": "gpt-4o-mini",
+      "name": "OpenAI - GPT-4o Mini",
+      "api_key": "",
+      "base_url": "https://api.openai.com/v1",
+      "is_custom": false,
+      "is_active": true,
+      "is_default": false,
+      "input_price_per_1k": 0.00015,
+      "output_price_per_1k": 0.0006,
+      "context_length": 128000,
+      "description": "GPT-4o Mini | 上下文: 128000",
+      "tags": [
+        "long-context",
+        "cheap"
+      ],
+      "created_at": ""
+    },
+    {
+      "id": "openai:gpt-4-turbo",
+      "provider": "openai",
+      "model": "gpt-4-turbo",
+      "name": "OpenAI - GPT-4 Turbo",
+      "api_key": "",
+      "base_url": "https://api.openai.com/v1",
+      "is_custom": false,
+      "is_active": true,
+      "is_default": false,
+      "input_price_per_1k": 0.01,
+      "output_price_per_1k": 0.03,
+      "context_length": 128000,
+      "description": "GPT-4 Turbo | 上下文: 128000",
+      "tags": [
+        "long-context",
+        "fast"
+      ],
+      "created_at": ""
+    },
+    {
+      "id": "openai:gpt-3.5-turbo",
+      "provider": "openai",
+      "model": "gpt-3.5-turbo",
+      "name": "OpenAI - GPT-3.5 Turbo",
+      "api_key": "",
+      "base_url": "https://api.openai.com/v1",
+      "is_custom": false,
+      "is_active": true,
+      "is_default": false,
+      "input_price_per_1k": 0.0005,
+      "output_price_per_1k": 0.0015,
+      "context_length": 16385,
+      "description": "GPT-3.5 Turbo | 上下文: 16385",
+      "tags": [
+        "cheap",
+        "fast"
+      ],
+      "created_at": ""
+    },
+    {
+      "id": "deepseek:deepseek-chat",
+      "provider": "deepseek",
+      "model": "deepseek-chat",
+      "name": "DeepSeek - DeepSeek-V3",
+      "api_key": "sk-test123",
+      "base_url": "https://api.deepseek.com/v1",
+      "is_custom": false,
+      "is_active": true,
+      "is_default": false,
+      "input_price_per_1k": 0.002,
+      "output_price_per_1k": 0.008,
+      "context_length": 64000,
+      "description": "DeepSeek-V3 | 上下文: 64000",
+      "tags": [
+        "long-context",
+        "cheap"
+      ],
+      "created_at": ""
+    },
+    {
+      "id": "deepseek:deepseek-reasoner",
+      "provider": "deepseek",
+      "model": "deepseek-reasoner",
+      "name": "DeepSeek - DeepSeek-R1",
+      "api_key": "",
+      "base_url": "https://api.deepseek.com/v1",
+      "is_custom": false,
+      "is_active": true,
+      "is_default": false,
+      "input_price_per_1k": 0.004,
+      "output_price_per_1k": 0.016,
+      "context_length": 64000,
+      "description": "DeepSeek-R1 | 上下文: 64000",
+      "tags": [
+        "long-context",
+        "cheap",
+        "reasoning"
+      ],
+      "created_at": ""
+    },
+    {
+      "id": "zhipu:glm-4-plus",
+      "provider": "zhipu",
+      "model": "glm-4-plus",
+      "name": "智谱GLM - GLM-4-Plus",
+      "api_key": "",
+      "base_url": "https://open.bigmodel.cn/api/paas/v4",
+      "is_custom": false,
+      "is_active": true,
+      "is_default": false,
+      "input_price_per_1k": 0.05,
+      "output_price_per_1k": 0.05,
+      "context_length": 128000,
+      "description": "GLM-4-Plus | 上下文: 128000",
+      "tags": [
+        "long-context"
+      ],
+      "created_at": ""
+    },
+    {
+      "id": "zhipu:glm-4",
+      "provider": "zhipu",
+      "model": "glm-4",
+      "name": "智谱GLM - GLM-4",
+      "api_key": "",
+      "base_url": "https://open.bigmodel.cn/api/paas/v4",
+      "is_custom": false,
+      "is_active": true,
+      "is_default": false,
+      "input_price_per_1k": 0.05,
+      "output_price_per_1k": 0.05,
+      "context_length": 128000,
+      "description": "GLM-4 | 上下文: 128000",
+      "tags": [
+        "long-context"
+      ],
+      "created_at": ""
+    },
+    {
+      "id": "zhipu:glm-4-flash",
+      "provider": "zhipu",
+      "model": "glm-4-flash",
+      "name": "智谱GLM - GLM-4-Flash",
+      "api_key": "",
+      "base_url": "https://open.bigmodel.cn/api/paas/v4",
+      "is_custom": false,
+      "is_active": true,
+      "is_default": false,
+      "input_price_per_1k": 0.0,
+      "output_price_per_1k": 0.0,
+      "context_length": 128000,
+      "description": "GLM-4-Flash | 上下文: 128000",
+      "tags": [
+        "long-context",
+        "cheap"
+      ],
+      "created_at": ""
+    },
+    {
+      "id": "zhipu:glm-4-air",
+      "provider": "zhipu",
+      "model": "glm-4-air",
+      "name": "智谱GLM - GLM-4-Air",
+      "api_key": "",
+      "base_url": "https://open.bigmodel.cn/api/paas/v4",
+      "is_custom": false,
+      "is_active": true,
+      "is_default": false,
+      "input_price_per_1k": 0.001,
+      "output_price_per_1k": 0.001,
+      "context_length": 128000,
+      "description": "GLM-4-Air | 上下文: 128000",
+      "tags": [
+        "long-context",
+        "cheap"
+      ],
+      "created_at": ""
+    },
+    {
+      "id": "moonshot:moonshot-v1-8k",
+      "provider": "moonshot",
+      "model": "moonshot-v1-8k",
+      "name": "Moonshot AI (Kimi) - Kimi K1-8K",
+      "api_key": "",
+      "base_url": "https://api.moonshot.cn/v1",
+      "is_custom": false,
+      "is_active": true,
+      "is_default": false,
+      "input_price_per_1k": 0.012,
+      "output_price_per_1k": 0.012,
+      "context_length": 8192,
+      "description": "Kimi K1-8K | 上下文: 8192",
+      "tags": [],
+      "created_at": ""
+    },
+    {
+      "id": "moonshot:moonshot-v1-32k",
+      "provider": "moonshot",
+      "model": "moonshot-v1-32k",
+      "name": "Moonshot AI (Kimi) - Kimi K1-32K",
+      "api_key": "",
+      "base_url": "https://api.moonshot.cn/v1",
+      "is_custom": false,
+      "is_active": true,
+      "is_default": false,
+      "input_price_per_1k": 0.024,
+      "output_price_per_1k": 0.024,
+      "context_length": 32768,
+      "description": "Kimi K1-32K | 上下文: 32768",
+      "tags": [],
+      "created_at": ""
+    },
+    {
+      "id": "moonshot:moonshot-v1-128k",
+      "provider": "moonshot",
+      "model": "moonshot-v1-128k",
+      "name": "Moonshot AI (Kimi) - Kimi K1-128K",
+      "api_key": "",
+      "base_url": "https://api.moonshot.cn/v1",
+      "is_custom": false,
+      "is_active": true,
+      "is_default": false,
+      "input_price_per_1k": 0.06,
+      "output_price_per_1k": 0.06,
+      "context_length": 131072,
+      "description": "Kimi K1-128K | 上下文: 131072",
+      "tags": [
+        "long-context"
+      ],
+      "created_at": ""
+    },
+    {
+      "id": "baichuan:Baichuan4",
+      "provider": "baichuan",
+      "model": "Baichuan4",
+      "name": "百川智能 - Baichuan4",
+      "api_key": "",
+      "base_url": "https://api.baichuan-ai.com/v1",
+      "is_custom": false,
+      "is_active": true,
+      "is_default": false,
+      "input_price_per_1k": 0.1,
+      "output_price_per_1k": 0.1,
+      "context_length": 32768,
+      "description": "Baichuan4 | 上下文: 32768",
+      "tags": [],
+      "created_at": ""
+    },
+    {
+      "id": "baichuan:Baichuan3-Turbo",
+      "provider": "baichuan",
+      "model": "Baichuan3-Turbo",
+      "name": "百川智能 - Baichuan3-Turbo",
+      "api_key": "",
+      "base_url": "https://api.baichuan-ai.com/v1",
+      "is_custom": false,
+      "is_active": true,
+      "is_default": false,
+      "input_price_per_1k": 0.005,
+      "output_price_per_1k": 0.005,
+      "context_length": 32768,
+      "description": "Baichuan3-Turbo | 上下文: 32768",
+      "tags": [
+        "fast"
+      ],
+      "created_at": ""
+    },
+    {
+      "id": "qwen:qwen-max",
+      "provider": "qwen",
+      "model": "qwen-max",
+      "name": "通义千问 - Qwen-Max",
+      "api_key": "",
+      "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "is_custom": false,
+      "is_active": true,
+      "is_default": false,
+      "input_price_per_1k": 0.02,
+      "output_price_per_1k": 0.06,
+      "context_length": 32768,
+      "description": "Qwen-Max | 上下文: 32768",
+      "tags": [],
+      "created_at": ""
+    },
+    {
+      "id": "qwen:qwen-plus",
+      "provider": "qwen",
+      "model": "qwen-plus",
+      "name": "通义千问 - Qwen-Plus",
+      "api_key": "",
+      "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "is_custom": false,
+      "is_active": true,
+      "is_default": false,
+      "input_price_per_1k": 0.0008,
+      "output_price_per_1k": 0.002,
+      "context_length": 131072,
+      "description": "Qwen-Plus | 上下文: 131072",
+      "tags": [
+        "long-context",
+        "cheap"
+      ],
+      "created_at": ""
+    },
+    {
+      "id": "qwen:qwen-turbo",
+      "provider": "qwen",
+      "model": "qwen-turbo",
+      "name": "通义千问 - Qwen-Turbo",
+      "api_key": "",
+      "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "is_custom": false,
+      "is_active": true,
+      "is_default": false,
+      "input_price_per_1k": 0.0003,
+      "output_price_per_1k": 0.0006,
+      "context_length": 131072,
+      "description": "Qwen-Turbo | 上下文: 131072",
+      "tags": [
+        "long-context",
+        "cheap",
+        "fast"
+      ],
+      "created_at": ""
+    },
+    {
+      "id": "doubao:doubao-pro-128k",
+      "provider": "doubao",
+      "model": "doubao-pro-128k",
+      "name": "豆包 - Doubao-Pro-128K",
+      "api_key": "",
+      "base_url": "https://ark.cn-beijing.volces.com/api/v3",
+      "is_custom": false,
+      "is_active": true,
+      "is_default": false,
+      "input_price_per_1k": 0.005,
+      "output_price_per_1k": 0.009,
+      "context_length": 131072,
+      "description": "Doubao-Pro-128K | 上下文: 131072",
+      "tags": [
+        "long-context"
+      ],
+      "created_at": ""
+    },
+    {
+      "id": "doubao:doubao-lite-128k",
+      "provider": "doubao",
+      "model": "doubao-lite-128k",
+      "name": "豆包 - Doubao-Lite-128K",
+      "api_key": "",
+      "base_url": "https://ark.cn-beijing.volces.com/api/v3",
+      "is_custom": false,
+      "is_active": true,
+      "is_default": false,
+      "input_price_per_1k": 0.0008,
+      "output_price_per_1k": 0.001,
+      "context_length": 131072,
+      "description": "Doubao-Lite-128K | 上下文: 131072",
+      "tags": [
+        "long-context",
+        "cheap"
+      ],
+      "created_at": ""
+    },
+    {
+      "id": "minimax:abab6.5s-chat",
+      "provider": "minimax",
+      "model": "abab6.5s-chat",
+      "name": "MiniMax - MiniMax-6.5s",
+      "api_key": "",
+      "base_url": "https://api.minimax.chat/v1",
+      "is_custom": false,
+      "is_active": true,
+      "is_default": false,
+      "input_price_per_1k": 0.01,
+      "output_price_per_1k": 0.01,
+      "context_length": 245000,
+      "description": "MiniMax-6.5s | 上下文: 245000",
+      "tags": [
+        "long-context"
+      ],
+      "created_at": ""
+    },
+    {
+      "id": "siliconflow:deepseek-ai/DeepSeek-V3",
+      "provider": "siliconflow",
+      "model": "deepseek-ai/DeepSeek-V3",
+      "name": "硅基流动 - DeepSeek-V3 (SiliconFlow)",
+      "api_key": "",
+      "base_url": "https://api.siliconflow.cn/v1",
+      "is_custom": false,
+      "is_active": true,
+      "is_default": false,
+      "input_price_per_1k": 0.001,
+      "output_price_per_1k": 0.004,
+      "context_length": 64000,
+      "description": "DeepSeek-V3 (SiliconFlow) | 上下文: 64000",
+      "tags": [
+        "long-context",
+        "cheap"
+      ],
+      "created_at": ""
+    },
+    {
+      "id": "siliconflow:Qwen/Qwen2.5-72B-Instruct",
+      "provider": "siliconflow",
+      "model": "Qwen/Qwen2.5-72B-Instruct",
+      "name": "硅基流动 - Qwen2.5-72B",
+      "api_key": "",
+      "base_url": "https://api.siliconflow.cn/v1",
+      "is_custom": false,
+      "is_active": true,
+      "is_default": false,
+      "input_price_per_1k": 0.004,
+      "output_price_per_1k": 0.004,
+      "context_length": 32768,
+      "description": "Qwen2.5-72B | 上下文: 32768",
+      "tags": [
+        "cheap"
+      ],
+      "created_at": ""
+    }
+  ],
+  "default_model_id": null
+}
