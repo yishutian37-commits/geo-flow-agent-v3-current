@@ -128,6 +128,14 @@ export const aiModelsApi = {
   getCostSummary: () => api.get('/ai-models/cost/summary'),
 };
 
+// Platform Policies API
+export const platformPoliciesApi = {
+  list: () => api.get('/platform-policies'),
+  get: (platform) => api.get(`/platform-policies/${platform}`),
+  update: (platform, data) => api.put(`/platform-policies/${platform}`, data),
+  check: (data) => api.post('/platform-policies/check', data),
+};
+
 // Corpus Items API
 export const corpusItemsApi = {
   list: (params) => api.get('/corpus-items', { params }),
@@ -240,6 +248,7 @@ export const monitoringApi = {
   updateRunStatus: (id, status) => api.post(`/monitoring/runs/${id}/status`, { status }),
   addSample: (runId, data) => api.post(`/monitoring/runs/${runId}/samples`, null, { params: data }),
   deleteSample: (id) => api.delete(`/monitoring/samples/${id}`),
+  createContentTaskFromSample: (id, data = {}) => api.post(`/monitoring/samples/${id}/content-task`, data),
   webbridgeSample: (runId, data, config = {}) => api.post(
     `/monitoring/runs/${runId}/webbridge-sample`,
     data,

@@ -11,15 +11,18 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 
+from app.core.auth import require_roles
 from app.core.database import get_db
 from app.models.brand import Brand
+from app.models.content_task import ContentTask
 from app.models.model_target import ModelTarget
 from app.models.monitoring import MonitoringRun, MonitoringSample
 from app.models.project import Project
-from app.models.question import Question
+from app.models.question import Question, QuestionGroup
 from app.models.source_asset import SourceAsset
+from app.models.user import User
 from app.services.monitoring_service import MonitoringService
 from app.services.webbridge_service import WebBridgeError, WebBridgeService
 
@@ -34,6 +37,13 @@ class WebBridgeSampleRequest(BaseModel):
 
 class MonitoringRunStatusRequest(BaseModel):
     status: str = Field(..., pattern="^(running|completed|failed|cancelled)$")
+
+
+class SampleContentTaskRequest(BaseModel):
+    content_type: Optional[str] = Field(None, max_length=100)
+    layer: Optional[str] = Field(None, max_length=50)
+    priority: Optional[str] = Field(None, max_length=20)
+    dedupe: bool = True
 
 
 def _run_to_dict(run, sample_count: int = 0, target_names: Optional[dict[str, str]] = None) -> dict:
@@ -158,6 +168,19 @@ def _sample_to_dict(sample, source_assets: Optional[list[SourceAsset]] = None) -
 
 def _sample_row_to_dict(sample, run=None, question=None, target=None, project=None, source_assets: Optional[list[SourceAsset]] = None) -> dict:
     data = _sample_to_dict(sample, source_assets)
+    platforms = []
+    if question and getattr(question, "recommended_platforms", None):
+        platforms = [item.strip() for item in re.split(r"[,，、\s]+", question.recommended_platforms or "") if item.strip()]
+    content_recommendation = None
+    if question and (not sample.brand_mentioned or not sample.recommended):
+        content_recommendation = {
+            "recommended_platforms": platforms,
+            "content_actionability": getattr(question, "content_actionability", None),
+            "evidence_support": getattr(question, "evidence_support", None),
+            "business_value": getattr(question, "business_value", None),
+            "question_formula": getattr(question, "question_formula", None),
+            "reason": "未提及品牌，建议先补入池/基础验证内容。" if not sample.brand_mentioned else "已提及但未推荐，建议补推荐理由、对比证据和权威信源。",
+        }
     data.update({
         "project_id": str(run.project_id) if run else None,
         "project_name": project.name if project else None,
@@ -169,8 +192,37 @@ def _sample_row_to_dict(sample, run=None, question=None, target=None, project=No
         "question_text": question.question_text if question else None,
         "question_priority": question.priority if question else None,
         "sample_policy": question.sample_policy if question else None,
+        "content_recommendation": content_recommendation,
     })
     return data
+
+
+def _content_task_to_dict(task: ContentTask, already_exists: bool = False) -> dict:
+    return {
+        "id": str(task.id),
+        "project_id": str(task.project_id),
+        "group_id": str(task.group_id) if task.group_id else None,
+        "content_type": task.content_type,
+        "layer": task.layer,
+        "priority": task.priority,
+        "status": task.status,
+        "due_date": task.due_date.isoformat() if task.due_date else None,
+        "created_at": task.created_at.isoformat() if task.created_at else None,
+        "updated_at": task.updated_at.isoformat() if task.updated_at else None,
+        "already_exists": already_exists,
+    }
+
+
+def _default_task_type_from_sample(question: Question, target: Optional[ModelTarget], sample: MonitoringSample) -> str:
+    if sample.brand_mentioned and not sample.recommended:
+        prefix = "补推荐理由"
+    elif not sample.brand_mentioned:
+        prefix = "补品牌入池"
+    else:
+        prefix = "巩固优势问题"
+    platform = target.product_name if target else "AI平台"
+    text = question.question_text or ""
+    return f"{prefix}｜{platform}｜{text}"[:100]
 
 
 async def _sample_counts(db: AsyncSession, run_ids: list[str]) -> dict[str, int]:
@@ -398,6 +450,7 @@ async def list_monitoring_samples(
 async def delete_monitoring_sample(
     sample_id: UUID,
     db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles("strategist", "project_owner")),
 ):
     """删除单条检测明细样本，不删除整次检测记录。"""
     service = MonitoringService(db)
@@ -405,6 +458,71 @@ async def delete_monitoring_sample(
     if not deleted:
         raise HTTPException(status_code=404, detail="Monitoring sample not found")
     return {"message": "Monitoring sample deleted", **deleted}
+
+
+@router.post("/samples/{sample_id}/content-task")
+async def create_content_task_from_sample(
+    sample_id: UUID,
+    data: SampleContentTaskRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles("strategist", "project_owner")),
+):
+    """从单条检测明细创建内容任务，让未提及/未推荐问题直接回流到内容生产。"""
+    result = await db.execute(
+        select(MonitoringSample, MonitoringRun, Question, QuestionGroup, ModelTarget)
+        .join(MonitoringRun, MonitoringSample.run_id == MonitoringRun.id)
+        .join(Question, MonitoringSample.question_id == Question.id)
+        .join(QuestionGroup, Question.group_id == QuestionGroup.id, isouter=True)
+        .join(ModelTarget, MonitoringRun.model_target_id == ModelTarget.id, isouter=True)
+        .where(MonitoringSample.id == sample_id)
+    )
+    row = result.one_or_none()
+    if not row:
+        raise HTTPException(status_code=404, detail="Monitoring sample not found")
+
+    sample, run, question, group, target = row
+    content_type = (data.content_type or _default_task_type_from_sample(question, target, sample)).strip()[:100]
+    if not content_type:
+        content_type = "GEO补发内容任务"
+    layer = (data.layer or (group.layer if group else None) or "verification_layer").strip()[:50]
+    priority = (data.priority or ("high" if (not sample.brand_mentioned or not sample.recommended) else "medium")).strip()[:20]
+
+    if data.dedupe:
+        filters = [
+            ContentTask.project_id == run.project_id,
+            ContentTask.content_type == content_type,
+            ContentTask.status != "cancelled",
+        ]
+        if group:
+            filters.append(ContentTask.group_id == group.id)
+        existing_result = await db.execute(
+            select(ContentTask)
+            .where(and_(*filters))
+            .order_by(ContentTask.created_at.desc())
+            .limit(1)
+        )
+        existing = existing_result.scalar_one_or_none()
+        if existing:
+            return {
+                "message": "Content task already exists",
+                "task": _content_task_to_dict(existing, already_exists=True),
+            }
+
+    task = ContentTask(
+        project_id=run.project_id,
+        group_id=question.group_id,
+        content_type=content_type,
+        layer=layer,
+        priority=priority,
+        status="draft",
+    )
+    db.add(task)
+    await db.commit()
+    await db.refresh(task)
+    return {
+        "message": "Content task created",
+        "task": _content_task_to_dict(task),
+    }
 
 
 @router.get("/source-analysis")
@@ -574,7 +692,8 @@ async def get_monitoring_run(
 @router.delete("/runs/{run_id}")
 async def delete_monitoring_run(
     run_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles("strategist", "project_owner")),
 ):
     """删除检测记录，并级联删除该记录下的检测样本与舆情记录。"""
     service = MonitoringService(db)

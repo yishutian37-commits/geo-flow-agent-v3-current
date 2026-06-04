@@ -9,6 +9,12 @@ class QuestionBase(BaseModel):
     question_text: str
     question_type: str = Field(default="brand_reputation", max_length=100)
     tags: Optional[str] = None
+    keyword_breakdown: Optional[str] = None
+    question_formula: Optional[str] = Field(default=None, max_length=500)
+    business_value: Optional[str] = Field(default=None, max_length=100)
+    evidence_support: Optional[str] = None
+    content_actionability: Optional[str] = None
+    recommended_platforms: Optional[str] = None
     priority: int = Field(default=50, ge=1, le=100)
     sample_policy: str = Field(default="mvp", max_length=50)
     enabled: bool = True
@@ -23,6 +29,12 @@ class QuestionUpdate(BaseModel):
     question_text: Optional[str] = None
     question_type: Optional[str] = Field(default=None, max_length=100)
     tags: Optional[str] = None
+    keyword_breakdown: Optional[str] = None
+    question_formula: Optional[str] = Field(default=None, max_length=500)
+    business_value: Optional[str] = Field(default=None, max_length=100)
+    evidence_support: Optional[str] = None
+    content_actionability: Optional[str] = None
+    recommended_platforms: Optional[str] = None
     priority: Optional[int] = Field(default=None, ge=1, le=100)
     sample_policy: Optional[str] = Field(default=None, max_length=50)
     enabled: Optional[bool] = None

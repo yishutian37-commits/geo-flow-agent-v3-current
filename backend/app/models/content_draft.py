@@ -13,6 +13,7 @@ class ContentDraft(Base):
     title = Column(String(500), nullable=True)
     body = Column(Text, nullable=True)
     version = Column(String(20), default="1.0", nullable=False)
+    platform = Column(String(200), default="media", nullable=False)
     status = Column(String(50), default="draft", nullable=False)
     risk_level = Column(String(20), default="low", nullable=False)
     fact_refs = Column(Text, nullable=True)

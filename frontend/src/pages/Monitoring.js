@@ -302,6 +302,7 @@ function Monitoring() {
   const [reportData, setReportData] = useState(null);
   const [selectedRun, setSelectedRun] = useState(null);
   const [promotingBaselineRunId, setPromotingBaselineRunId] = useState(null);
+  const [creatingTaskSampleId, setCreatingTaskSampleId] = useState(null);
   const cancelRequestedRef = useRef(false);
   const activeAbortControllerRef = useRef(null);
   const activeRunIdRef = useRef(null);
@@ -960,6 +961,22 @@ function Monitoring() {
     });
   };
 
+  const handleCreateTaskFromSample = async (sample) => {
+    setCreatingTaskSampleId(sample.id);
+    try {
+      const res = await monitoringApi.createContentTaskFromSample(sample.id, {});
+      if (res.data?.task?.already_exists) {
+        message.info('这条检测短板已有关联内容任务，未重复创建');
+      } else {
+        message.success('已从检测明细生成内容任务');
+      }
+    } catch (error) {
+      message.error('生成内容任务失败：' + extractError(error));
+    } finally {
+      setCreatingTaskSampleId(null);
+    }
+  };
+
   const handleViewMetrics = async (run) => {
     setSelectedRun(run);
     setReportData(null);
@@ -1217,6 +1234,30 @@ function Monitoring() {
       },
     },
     {
+      title: '补发建议',
+      dataIndex: 'content_recommendation',
+      width: 280,
+      render: (value) => {
+        if (!value) return <Text type="secondary">-</Text>;
+        return (
+          <Space direction="vertical" size={4}>
+            <Text type="secondary">{value.reason}</Text>
+            <Space wrap size={4}>
+              {(value.recommended_platforms || []).slice(0, 4).map((platform) => (
+                <Tag key={platform} color="cyan">{platform}</Tag>
+              ))}
+              {value.business_value && (
+                <Tag color={value.business_value === 'high' ? 'red' : 'orange'}>价值：{value.business_value}</Tag>
+              )}
+            </Space>
+            {value.content_actionability && (
+              <Text type="secondary" ellipsis style={{ maxWidth: 240 }}>{value.content_actionability}</Text>
+            )}
+          </Space>
+        );
+      },
+    },
+    {
       title: '检测时间',
       dataIndex: 'sampled_at',
       width: 190,
@@ -1230,6 +1271,14 @@ function Monitoring() {
         <Space size={4} wrap>
           <Button type="link" icon={<EyeOutlined />} onClick={() => setSampleDetail(record)}>
             AI搜索详情
+          </Button>
+          <Button
+            type="link"
+            icon={<ThunderboltOutlined />}
+            loading={creatingTaskSampleId === record.id}
+            onClick={() => handleCreateTaskFromSample(record)}
+          >
+            生成任务
           </Button>
           <Button danger type="link" icon={<DeleteOutlined />} onClick={() => handleDeleteSample(record)}>
             删除
@@ -1678,6 +1727,7 @@ function Monitoring() {
           dataSource={filteredSamples}
           loading={sampleLoading}
           pagination={{ pageSize: 10 }}
+          scroll={{ x: 1720 }}
           locale={{ emptyText: '暂无检测明细，完成自动检测后会出现在这里' }}
         />
       </div>

@@ -17,6 +17,10 @@ from app.api.v1.endpoints.projects import (
     generate_content_matrix,
     generate_question_bank,
 )
+from app.api.v1.endpoints.monitoring import (
+    SampleContentTaskRequest,
+    create_content_task_from_sample,
+)
 from app.api.v1.endpoints.questions import create_question, create_question_group
 from app.core.database import Base
 from app.models.baseline_run import BaselineRun
@@ -130,7 +134,7 @@ async def test_project_to_question_content_monitoring_baseline_flow_is_connected
             ).scalars().first()
             monitor = MonitoringService(db)
             run = await monitor.create_run(project.id, "routine", "B")
-            await monitor.add_sample(
+            sample = await monitor.add_sample(
                 run.id,
                 question.id,
                 answer_text="包头无人机培训可以关注蒙霁空天智能，建议核验证书编号。",
@@ -145,6 +149,22 @@ async def test_project_to_question_content_monitoring_baseline_flow_is_connected
             assert metrics["raw_counts"]["mentioned"] == 1
             assert metrics["raw_counts"]["recommended"] == 1
             assert metrics["metrics"]["average_visibility_score"] == 1.0
+
+            sample_task = await create_content_task_from_sample(
+                sample.id,
+                SampleContentTaskRequest(),
+                db=db,
+                user=SimpleNamespace(role="project_owner"),
+            )
+            assert sample_task["task"]["project_id"] == str(project.id)
+            assert sample_task["task"]["group_id"] == str(question.group_id)
+            duplicate_sample_task = await create_content_task_from_sample(
+                sample.id,
+                SampleContentTaskRequest(),
+                db=db,
+                user=SimpleNamespace(role="project_owner"),
+            )
+            assert duplicate_sample_task["task"]["already_exists"] is True
 
             baseline = await promote_monitoring_run_to_baseline(
                 run.id,

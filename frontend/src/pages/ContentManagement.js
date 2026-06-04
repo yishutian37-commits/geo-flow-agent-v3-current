@@ -65,6 +65,7 @@ const layerLabels = {
 const platformLabels = {
   media: '媒体稿',
   official_account: '公众号',
+  shipinhao: '视频号',
   xiaohongshu: '小红书',
   b2b_product: 'B2B产品页',
   official_faq: '官网FAQ',
@@ -72,7 +73,40 @@ const platformLabels = {
   baijiahao: '百家号',
   zhihu: '知乎',
   toutiao: '头条',
+  netease: '网易号',
+  sina: '新浪看点',
+  penguin: '企鹅号',
   other: '其他',
+};
+
+const layerPlatformRecommendations = {
+  verification_layer: ['website', 'official_faq', 'baijiahao', 'zhihu'],
+  pool_layer: ['baijiahao', 'toutiao', 'media'],
+  weight_layer: ['zhihu', 'baijiahao', 'toutiao'],
+  conversion_layer: ['official_account', 'website', 'xiaohongshu'],
+};
+
+const contentTypePlatformRecommendations = {
+  faq: ['official_faq', 'website', 'baijiahao'],
+  product: ['website', 'b2b_product', 'baijiahao'],
+  case_study: ['media', 'baijiahao', 'official_account'],
+  pr: ['media', 'toutiao', 'netease', 'sina'],
+  recommendation: ['zhihu', 'baijiahao', 'toutiao'],
+  brand_intro: ['media', 'official_account', 'baijiahao'],
+};
+
+const getRecommendedPlatformsForTask = (task = {}) => {
+  const ordered = [
+    ...(contentTypePlatformRecommendations[task.content_type] || []),
+    ...(layerPlatformRecommendations[task.layer] || []),
+    'media',
+  ];
+  const seen = new Set();
+  return ordered.filter((platform) => {
+    if (!platform || seen.has(platform)) return false;
+    seen.add(platform);
+    return true;
+  }).slice(0, 4);
 };
 
 const formatApiDetail = (detail) => {
@@ -335,9 +369,10 @@ function ContentManagement() {
       return;
     }
     setGeneratingTask(task);
+    const recommendedPlatforms = getRecommendedPlatformsForTask(task);
     generateForm.setFieldsValue({
       content_type: task.content_type || 'brand_intro',
-      platform: 'media',
+      platforms: recommendedPlatforms,
     });
     setGenerateModalVisible(true);
   };
@@ -346,22 +381,56 @@ function ContentManagement() {
     if (!generatingTask) return;
     setGenerating(true);
     try {
-      const res = await contentDraftsApi.generate(generatingTask.id, values);
-      message.success('草稿生成成功');
-      setGenerateModalVisible(false);
-      generateForm.resetFields();
-      setGeneratingTask(null);
-      loadDrafts();
-      setActiveTab('2');
+      const platforms = Array.isArray(values.platforms) && values.platforms.length
+        ? values.platforms
+        : [values.platform || 'media'];
+      const results = [];
+      const failures = [];
+      for (const platform of platforms) {
+        try {
+          const res = await contentDraftsApi.generate(generatingTask.id, {
+            ...values,
+            platform,
+          });
+          results.push({ platform, data: res.data });
+        } catch (error) {
+          const detail = error.code === 'ECONNABORTED'
+            ? '生成时间过长'
+            : formatApiError(error);
+          failures.push({ platform, detail });
+        }
+      }
+      if (results.length > 0) {
+        message.success(platforms.length > 1 ? `已生成 ${results.length} 个平台草稿` : '草稿生成成功');
+        setGenerateModalVisible(false);
+        generateForm.resetFields();
+        setGeneratingTask(null);
+        loadDrafts();
+        setActiveTab('2');
+      }
+      if (failures.length > 0) {
+        const failureText = failures
+          .map((item) => `${platformLabels[item.platform] || item.platform}: ${item.detail}`)
+          .join('；');
+        if (results.length > 0) {
+          message.warning(`部分平台生成失败：${failureText}`);
+        } else {
+          message.error(`生成失败：${failureText}`);
+        }
+      }
 
       // 如果有合规问题，提示
-      if (res.data.compliance_issues?.length > 0) {
-        message.warning(`生成完成，但发现 ${res.data.compliance_issues.length} 个合规问题，请检查`);
+      const issueCount = results.reduce(
+        (sum, item) => sum + (item?.data?.compliance_issues?.length || 0),
+        0,
+      );
+      if (issueCount > 0) {
+        message.warning(`生成完成，但发现 ${issueCount} 个合规问题，请检查`);
       }
     } catch (error) {
       const detail = error.code === 'ECONNABORTED'
         ? '生成时间过长，请稍后重试；如果模型响应较慢，可以减少文章长度或换响应更快的模型。'
-        : (error.response?.data?.detail || error.message);
+        : formatApiError(error);
       message.error('生成失败: ' + detail);
     } finally {
       setGenerating(false);
@@ -374,6 +443,7 @@ function ContentManagement() {
     draftForm.setFieldsValue({
       title: draft.title,
       body: draft.body,
+      platform: draft.platform || 'media',
       status: draft.status,
       risk_level: draft.risk_level,
     });
@@ -492,10 +562,13 @@ function ContentManagement() {
       message.warning('无法定位草稿对应的内容任务，请刷新后重试');
       return;
     }
-    const defaultAccount = channelAccounts.find((item) => item.publish_permission && item.status === 'normal') || channelAccounts[0];
+    const draftPlatform = draft.platform || 'official_account';
+    const defaultAccount = channelAccounts.find((item) => item.platform === draftPlatform && item.publish_permission && item.status === 'normal')
+      || channelAccounts.find((item) => item.publish_permission && item.status === 'normal')
+      || channelAccounts[0];
     setPublishingDraft(draft);
     publishForm.setFieldsValue({
-      publish_targets: defaultAccount?.id ? [`account:${defaultAccount.id}`] : ['platform:official_account'],
+      publish_targets: defaultAccount?.id ? [`account:${defaultAccount.id}`] : [`platform:${draftPlatform}`],
       title: draft.title,
       urls_text: '',
       status: 'published',
@@ -510,7 +583,10 @@ function ContentManagement() {
       message.warning('无法定位草稿对应的内容任务，请刷新后重试');
       return;
     }
-    const defaultAccount = channelAccounts.find((item) => item.publish_permission && item.status === 'normal') || channelAccounts[0];
+    const draftPlatform = draft.platform || 'other';
+    const defaultAccount = channelAccounts.find((item) => item.platform === draftPlatform && item.publish_permission && item.status === 'normal')
+      || channelAccounts.find((item) => item.publish_permission && item.status === 'normal')
+      || channelAccounts[0];
     setPublishAssistLoading(true);
     setPublishAssistVisible(true);
     setPublishAssistResult(null);
@@ -518,7 +594,7 @@ function ContentManagement() {
       const res = await publishRecordsApi.webbridgeAssist({
         draft_id: draft.id,
         channel_account_id: defaultAccount?.id,
-        platform: defaultAccount?.platform || 'other',
+        platform: defaultAccount?.platform || draftPlatform || 'other',
       });
       setPublishAssistResult(res.data);
       if (!res.data.can_publish) {
@@ -813,6 +889,12 @@ function ContentManagement() {
   const draftColumns = [
     { title: '标题', dataIndex: 'title', key: 'title', ellipsis: true },
     {
+      title: '目标平台',
+      dataIndex: 'platform',
+      key: 'platform',
+      render: (value) => platformLabels[value] || value || '媒体稿',
+    },
+    {
       title: '草稿版本',
       dataIndex: 'draft_version',
       key: 'draft_version',
@@ -1096,18 +1178,29 @@ function ContentManagement() {
           <Form.Item name="content_type" label="内容类型">
             <Input disabled />
           </Form.Item>
-          <Form.Item name="platform" label="目标平台" initialValue="media">
-            <Select placeholder="选择发布平台">
-              <Option value="media">媒体稿</Option>
-              <Option value="official_account">公众号</Option>
-              <Option value="xiaohongshu">小红书</Option>
-              <Option value="b2b_product">B2B产品页</Option>
-              <Option value="official_faq">官网FAQ</Option>
+          <Form.Item name="platforms" label="目标平台（可多选）" initialValue={['media']}>
+            <Select mode="multiple" placeholder="选择一个或多个发布平台">
+              {Object.entries(platformLabels).map(([value, label]) => (
+                <Option key={value} value={value}>{label}</Option>
+              ))}
             </Select>
           </Form.Item>
           <Alert
             message="生成说明"
-            description='系统会优先基于已确认的品牌事实库生成可发布草稿；如果当前没有已确认公开事实，也会生成“资料不足版草稿”，但会标记风险，发布前需要补充并确认资质、产品、地址、案例等基础事实。'
+            description={(
+              <Space direction="vertical" size={4}>
+                <Text>
+                  系统会优先基于已确认的品牌事实库生成可发布草稿；每个平台会按各自规则控制结构、字数、引流方式和高风险表达。
+                </Text>
+                <Text type="secondary">
+                  推荐平台：
+                  {getRecommendedPlatformsForTask(generatingTask || {})
+                    .map((platform) => platformLabels[platform] || platform)
+                    .join('、')}
+                  。你可以按实际发布计划增删。
+                </Text>
+              </Space>
+            )}
             type="info"
             showIcon
             style={{ marginBottom: 16 }}
@@ -1133,6 +1226,13 @@ function ContentManagement() {
           </Form.Item>
           <Form.Item name="body" label="正文">
             <TextArea rows={12} />
+          </Form.Item>
+          <Form.Item name="platform" label="目标平台">
+            <Select>
+              {Object.entries(platformLabels).map(([value, label]) => (
+                <Option key={value} value={value}>{label}</Option>
+              ))}
+            </Select>
           </Form.Item>
           <Form.Item name="status" label="状态">
             <Select>
@@ -1434,8 +1534,12 @@ function ContentManagement() {
         {validationResult && (
           <div>
             <Alert
-              message={validationResult.can_publish ? '✅ 可以通过发布检查' : '❌ 存在阻塞问题'}
-              type={validationResult.can_publish ? 'success' : 'error'}
+              message={
+                validationResult.can_publish
+                  ? (validationResult.issues?.length ? '可以发布，但有风险提示' : '✅ 可以通过发布检查')
+                  : '❌ 存在阻塞问题'
+              }
+              type={validationResult.can_publish ? (validationResult.issues?.length ? 'warning' : 'success') : 'error'}
               showIcon
               style={{ marginBottom: 16 }}
             />

@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.database import get_db
 from app.models.project import Project
 from app.models.writing_memory import ContentFeedback, WritingProfile
+from app.prompts.templates import render_prompt_template
 from app.schemas.writing_memory import ContentFeedbackCreate, ContentFeedbackUpdate, FoldProfileRequest, WritingProfileUpdate
 
 router = APIRouter()
@@ -176,6 +177,7 @@ async def _analyze_feedback_with_ai(project: Project, data: ContentFeedbackCreat
 }, ensure_ascii=False, indent=2)}
 
 请输出可直接给文章生成器使用的优化后重写提示词。"""
+        system_prompt = render_prompt_template("geo/rewrite_with_memory_v1.md", {})
         response = await client.chat(
             messages=[
                 {"role": "system", "content": system_prompt},
