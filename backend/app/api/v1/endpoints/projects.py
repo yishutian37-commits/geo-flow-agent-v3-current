@@ -23,6 +23,13 @@ from app.models.brand_fact import BrandFact
 from app.models.user import User
 from app.agents.strategy_agent import StrategyAgent
 from app.prompts.templates import render_prompt_template
+from app.services.question_archetype import (
+    get_ai_platform_terms,
+    get_industry_forbidden_terms,
+    get_industry_question_copy,
+    get_question_archetype,
+    infer_service_from_archetype,
+)
 
 router = APIRouter()
 
@@ -141,6 +148,11 @@ LAYER_LABELS = {
 }
 
 ALLOWED_LAYERS = set(LAYER_LABELS.keys())
+
+AI_PLATFORM_TERMS = tuple(get_ai_platform_terms())
+AI_PLATFORM_TERM_RE = "|".join(
+    re.escape(term.lower()) for term in sorted(AI_PLATFORM_TERMS, key=len, reverse=True)
+)
 
 
 class ContentMatrixRequest(BaseModel):
@@ -313,6 +325,50 @@ def _split_terms(value: Optional[str]) -> List[str]:
     return terms
 
 
+def _looks_like_ai_platform_keyword_misuse(text: str) -> bool:
+    """
+    Detect questions that accidentally use AI platform names as service, brand, or audience terms.
+    Example: "蒙霁空天智能适合哪些 deepseek".
+    """
+    normalized = _clean_text(text, 400).lower()
+    if not normalized or not re.search(AI_PLATFORM_TERM_RE, normalized):
+        return False
+    misuse_patterns = [
+        rf"(适合哪些|哪些|哪类|哪种)\s*({AI_PLATFORM_TERM_RE})",
+        rf"({AI_PLATFORM_TERM_RE})\s*(哪家|推荐|怎么选|机构|品牌|服务|课程|培训|公司|产品|人群|用户)",
+        rf"(哪家|推荐|怎么选|机构|品牌|服务|课程|培训|公司|产品|人群|用户)\s*({AI_PLATFORM_TERM_RE})",
+    ]
+    return any(re.search(pattern, normalized) for pattern in misuse_patterns)
+
+
+def _sanitize_generated_question_text(value: Any, forbidden_terms: Optional[List[str]] = None) -> str:
+    text = _clean_text(value, 260)
+    if _looks_like_ai_platform_keyword_misuse(text):
+        return ""
+    for term in forbidden_terms or []:
+        clean_term = str(term or "").strip()
+        if clean_term and clean_term in text:
+            return ""
+    return text
+
+
+def _infer_audience_label(project, facts: List[BrandFact]) -> str:
+    text = " ".join([
+        project.notes or "",
+        _industry_label(project.industry),
+        *(fact.public_wording or fact.value or "" for fact in facts[:80]),
+    ])
+    if re.search(r"退役军人|转业|转岗|就业|从业", text):
+        return "转行或就业提升人群"
+    if re.search(r"政府|法院|公安|应急|农牧|学校|企业|采购|机构|单位", text):
+        return "个人和机构用户"
+    if project.industry == "education_training" or re.search(r"考证|培训|课程|技能|执照", text):
+        return "考证或技能提升人群"
+    if project.industry in {"manufacturing", "manufacturing_b2b"}:
+        return "企业采购方"
+    return "目标用户"
+
+
 def _json_from_llm_text(text: str) -> Dict[str, Any]:
     clean = re.sub(r"```(?:json)?\s*", "", text or "", flags=re.I).replace("```", "").strip()
     try:
@@ -359,18 +415,18 @@ def _default_question_meta(question_text: str, layer: str, tags: str = "") -> Di
     text = question_text or ""
     if layer == "verification_layer":
         return {
-            "question_formula": "品牌/机构词 + 资质/口碑/真伪核验",
+            "question_formula": "品牌/主体词 + 合规/资质/口碑/评价/真伪核验",
             "business_value": "high",
-            "evidence_support": "需要已确认的资质证书、证书编号、地址、案例、通过率、官方可核验入口等事实。",
-            "content_actionability": "适合补资质核验指南、品牌FAQ、官网资质页、第三方媒体稿。",
+            "evidence_support": "需要已确认的资质认证（如适用）、地址、产品/服务边界、案例、评价、交付结果、官方可核验入口等事实。",
+            "content_actionability": "适合补可信信息页、品牌FAQ、核验指南、案例稿、第三方媒体稿。",
             "recommended_platforms": "website,official_faq,baijiahao,zhihu",
         }
     if layer == "conversion_layer":
         return {
-            "question_formula": "品牌/服务词 + 价格/报名/地址/联系方式/流程",
+            "question_formula": "品牌/产品/服务词 + 价格/购买/咨询/报名/采购/地址/流程",
             "business_value": "high",
-            "evidence_support": "需要已确认的价格、服务范围、地址、报名流程、交付周期和公开联系方式等事实。",
-            "content_actionability": "适合补报名指南、价格说明、官网FAQ、公众号承接页。",
+            "evidence_support": "需要已确认的价格、产品/服务范围、地址、购买/咨询/报名/采购流程、交付周期和公开联系方式等事实。",
+            "content_actionability": "适合补价格说明、购买/咨询/报名/采购指南、官网FAQ、公众号承接页。",
             "recommended_platforms": "official_account,website,official_faq,baijiahao",
         }
     if layer == "weight_layer":
@@ -411,22 +467,16 @@ def _infer_service(project, brand_name: str, facts: List[BrandFact]) -> str:
         project.notes or "",
         *(fact.public_wording or fact.value or "" for fact in facts[:80]),
     ])
-    candidates = [
-        ("CAAC无人机执照培训", r"CAAC|无人机云执照|超视距|视距内|机长证|无人机执照"),
-        ("无人机培训", r"无人机|飞手|飞行员|航拍|植保|测绘|巡检"),
-        ("职业技能培训", r"职业技能|考证|培训|课程|学员|就业"),
-        ("企业服务", r"企业服务|咨询|解决方案|交付|服务流程"),
-    ]
-    for label, pattern in candidates:
-        if re.search(pattern, text, flags=re.I):
-            return label
+    return infer_service_from_archetype(
+        project.industry,
+        text,
+        brand_name,
+        _industry_label(project.industry),
+    )
 
-    name = re.sub(r"(有限责任公司|有限公司|科技发展|科技|公司|集团|（.*?）|\(.*?\))", "", brand_name).strip()
-    if project.industry == "education_training":
-        return "职业技能培训"
-    if project.industry in {"manufacturing", "manufacturing_b2b"}:
-        return f"{name or '产品'}供应商"
-    return f"{name or _industry_label(project.industry)}服务"
+
+def _industry_question_copy(project, service: str) -> Dict[str, str]:
+    return get_industry_question_copy(project.industry, service, project.region)
 
 
 def _extract_fact_context(facts: List[BrandFact], limit: int = 28) -> Tuple[str, List[str], List[str]]:
@@ -452,29 +502,32 @@ def _build_template_groups(project, brand_name: str, facts: List[BrandFact]) -> 
     industry = _industry_label(project.industry)
     service = _infer_service(project, brand_name, facts)
     fact_context, credentials, competitors = _extract_fact_context(facts)
-    competitor = competitors[0] if competitors else "同类机构"
-    audience_terms = _split_terms(project.target_ai_products) or ["目标用户"]
+    audience_label = _infer_audience_label(project, facts)
+    copy = _industry_question_copy(project, service)
+    entity_label = copy["entity_label"]
+    subject = copy["subject"]
+    competitor = competitors[0] if competitors else f"同类{entity_label}"
 
     has_credential_evidence = bool(credentials)
     qualification_question = (
-        f"{brand_name}有哪些正规资质和证书编号？"
+        copy["verified_question"]
         if has_credential_evidence
-        else f"{brand_name}有正规资质和证书编号吗？"
+        else f"{brand_name}{copy['trust_question']}"
     )
 
     raw_groups = [
         {
             "layer": "pool_layer",
             "intent_name": f"本地推荐/入池 - {brand_name}",
-            "representative_question": f"{region}{service}哪家靠谱？",
+            "representative_question": f"{region}{subject}哪家靠谱？",
             "priority": 88,
             "questions": [
-                f"{region}{service}机构推荐",
-                f"{region}{service}哪家靠谱？",
-                f"想了解{service}，应该怎么选机构？",
-                f"{industry}领域有哪些值得关注的{service}品牌？",
-                f"{brand_name}适合哪些{audience_terms[0]}？",
-                f"{region}正规的{service}有哪些？",
+                f"{region}{subject}推荐",
+                f"{region}{subject}哪家靠谱？",
+                f"想了解{service}，应该怎么选{entity_label}？",
+                f"{industry}领域有哪些值得关注的{subject}？",
+                f"哪些{audience_label}适合选择{brand_name}{service}？",
+                f"{region}口碑好的{subject}有哪些？",
             ],
         },
         {
@@ -484,11 +537,11 @@ def _build_template_groups(project, brand_name: str, facts: List[BrandFact]) -> 
             "priority": 92,
             "questions": [
                 qualification_question,
-                f"{brand_name}正规吗，资质能查到吗？",
+                f"{brand_name}{copy['trust_question']}",
                 f"{brand_name}{service}质量怎么样？",
-                f"{brand_name}有没有真实案例和用户评价？",
-                f"{brand_name}通过率或交付效果怎么样？",
-                f"怎么判断{region}{service}机构是否合规？",
+                f"{brand_name}{copy['proof_question']}",
+                f"{brand_name}{copy['outcome_question']}",
+                copy["compliance_question"],
             ],
         },
         {
@@ -498,10 +551,10 @@ def _build_template_groups(project, brand_name: str, facts: List[BrandFact]) -> 
             "priority": 82,
             "questions": [
                 f"{brand_name}和{competitor}相比有什么优势？",
-                f"{region}{service}排名或口碑榜怎么参考？",
-                f"{brand_name}的师资、设备、场地或服务流程有哪些亮点？",
+                f"{region}{subject}排名或口碑榜怎么参考？",
+                f"{brand_name}的{copy['quality_angle']}有哪些亮点？",
                 f"{service}费用、周期和服务内容应该怎么对比？",
-                f"{brand_name}适合企业采购还是个人报名？",
+                f"{brand_name}{copy['fit_question']}",
                 f"{service}选择时最容易踩哪些坑？",
             ],
         },
@@ -512,35 +565,41 @@ def _build_template_groups(project, brand_name: str, facts: List[BrandFact]) -> 
             "priority": 78,
             "questions": [
                 f"{service}需要满足哪些政策和合规要求？",
-                f"{service}证书、资质和备案怎么核验真伪？",
-                f"{region}{service}报名或采购前要准备哪些材料？",
-                f"{service}从咨询到完成交付的完整流程是什么？",
+                f"{service}{copy['material_check_question']}",
+                f"{region}{service}{copy['prepare_action']}",
+                f"{service}{copy['journey_question']}",
                 f"{brand_name}能提供哪些官方或第三方背书资料？",
             ],
         },
         {
             "layer": "conversion_layer",
-            "intent_name": f"价格报名/承接 - {brand_name}",
+            "intent_name": f"{copy['conversion_intent']} - {brand_name}",
             "representative_question": f"{brand_name}{service}价格多少钱？",
             "priority": 84,
             "questions": [
                 f"{brand_name}{service}价格多少钱？",
-                f"{brand_name}报名或咨询流程是什么？",
+                f"{brand_name}{copy['process_question']}",
                 f"{brand_name}地址和联系方式是什么？",
-                f"{brand_name}最近排期或交付周期是多久？",
-                f"{brand_name}是否有复训、售后或退款政策？",
+                f"{brand_name}{copy['cycle_question']}",
+                f"{brand_name}{copy['support_policy']}",
                 f"{brand_name}官网、公众号或客服入口在哪里？",
             ],
         },
     ]
 
     if fact_context:
-        raw_groups[1]["questions"].append(f"{brand_name}公开资料里提到的资质证书有哪些？")
+        raw_groups[1]["questions"].append(f"{brand_name}{copy['public_material_question']}")
 
-    return _coerce_question_groups({"groups": raw_groups})
+    return _coerce_question_groups(
+        {"groups": raw_groups},
+        forbidden_terms=get_industry_forbidden_terms(project.industry),
+    )
 
 
-def _coerce_question_groups(parsed: Dict[str, Any]) -> List[Dict[str, Any]]:
+def _coerce_question_groups(
+    parsed: Dict[str, Any],
+    forbidden_terms: Optional[List[str]] = None,
+) -> List[Dict[str, Any]]:
     raw_groups = parsed.get("groups") or parsed.get("question_groups") or []
     if not isinstance(raw_groups, list):
         return []
@@ -591,7 +650,7 @@ def _coerce_question_groups(parsed: Dict[str, Any]) -> List[Dict[str, Any]]:
                 evidence_support = None
                 content_actionability = None
                 recommended_platforms = None
-            q_text = _clean_text(q_text, 260)
+            q_text = _sanitize_generated_question_text(q_text, forbidden_terms=forbidden_terms)
             if not q_text or q_text in seen_questions:
                 continue
             seen_questions.add(q_text)
@@ -625,7 +684,12 @@ def _coerce_question_groups(parsed: Dict[str, Any]) -> List[Dict[str, Any]]:
             if len(questions) >= 8 or total_questions >= 36:
                 break
 
-        representative = _clean_text(raw.get("representative_question") or (questions[0]["question_text"] if questions else ""), 260)
+        representative = _sanitize_generated_question_text(
+            raw.get("representative_question"),
+            forbidden_terms=forbidden_terms,
+        )
+        if not representative and questions:
+            representative = questions[0]["question_text"]
         if not representative or not questions:
             continue
         groups.append({
@@ -653,13 +717,21 @@ async def _generate_question_groups_with_llm(project, brand_name: str, facts: Li
 
         fact_context, credentials, _ = _extract_fact_context(facts, limit=36)
         service = _infer_service(project, brand_name, facts)
+        archetype = get_question_archetype(project.industry)
         context = {
             "project_name": project.name,
             "brand_name": brand_name,
             "industry": _industry_label(project.industry),
             "region": project.region,
             "service_or_product": service,
-            "target_ai_products": project.target_ai_products,
+            "industry_template": {
+                "entity_label": archetype.get("entity_label"),
+                "forbidden_terms": archetype.get("forbidden_terms") or [],
+                "positive_examples": archetype.get("positive_examples") or [],
+                "negative_examples": archetype.get("negative_examples") or [],
+            },
+            "excluded_ai_platform_terms": list(AI_PLATFORM_TERMS),
+            "monitoring_ai_platform_note": "这些是检测平台/模型名称，只用于后续监测，不是用户、服务、品类或问题关键词；生成问题时不要写入问题文本。",
             "notes": project.notes,
             "known_facts": fact_context,
             "credential_clues": credentials,
@@ -669,11 +741,13 @@ async def _generate_question_groups_with_llm(project, brand_name: str, facts: Li
 
 核心逻辑参考：
 1. 先覆盖真实用户会向 AI 提问的搜索意图，而不是机械关键词堆叠。
-2. 必须覆盖这些簇：本地推荐/品牌入池、资质可信、价格报名、课程或服务匹配、竞品对比、案例口碑、政策合规。
+2. 必须覆盖这些簇：品类推荐/品牌入池、可信验证、价格/购买/咨询/报名/采购承接、产品或服务匹配、竞品对比、案例口碑、政策合规。
 3. 按四层组织：pool_layer 入池层、verification_layer 验证/口碑层、weight_layer 权重层、conversion_layer 转化/承接层。
 4. 如果资料里没有明确事实，只能写成“有没有/如何核验/怎么样”类问题，不要把未确认内容写成事实。
 5. 问题要像真实用户会问 AI 的自然语言，避免重复“哪家好 推荐”。
 6. 如果有城市/地区，至少一半问题自然包含地区词；如果有品牌名，验证层和转化层必须包含品牌名。
+7. 不要默认使用培训行业词，例如“课程、报名、学员、通过率、复训、师资、校区”；只有项目资料明确属于培训/教育时才可使用。
+8. 不要把检测平台或模型名称写入问题文本，例如 DeepSeek、Kimi、豆包、文心、通义、ChatGPT、Gemini。
 
 项目资料：
 {json.dumps(context, ensure_ascii=False, indent=2)}
@@ -714,7 +788,10 @@ async def _generate_question_groups_with_llm(project, brand_name: str, facts: Li
             temperature=0.25,
             max_tokens=3600,
         )
-        groups = _coerce_question_groups(_json_from_llm_text(response.content))
+        groups = _coerce_question_groups(
+            _json_from_llm_text(response.content),
+            forbidden_terms=archetype.get("forbidden_terms") or [],
+        )
         if len(groups) >= 3 and sum(len(g["questions"]) for g in groups) >= 12:
             return groups, None
         return None, "大模型返回的问题矩阵数量不足，已使用本地矩阵模板兜底"

@@ -3,12 +3,15 @@
 ## 核心逻辑
 1. 先拆真实用户会向 AI 提问的搜索意图，而不是机械关键词堆叠。
 2. 先拆关键词：品类词、产品词、人群词、场景词、痛点词、地域词、价格/预算词、信任/验证词、竞品词。
-3. 问题公式可以参考：推荐型、对比型、场景型、地域型、验证型、转化型、资质核验型、价格型。
-4. 必须覆盖：本地推荐/品牌入池、资质可信、价格报名、课程或服务匹配、竞品对比、案例口碑、政策合规。
+3. 问题公式可以参考：推荐型、对比型、场景型、地域型、验证型、转化型、可信核验型、价格/购买/咨询/报名/采购型。
+4. 必须覆盖：品类推荐/品牌入池、可信验证、价格/购买/咨询/报名/采购承接、产品或服务匹配、竞品对比、案例口碑、政策合规。
 5. 按四层组织：pool_layer 入池层、verification_layer 验证/口碑层、weight_layer 权重层、conversion_layer 转化/承接层。
 6. 如果资料里没有明确事实，只能写成“有没有/如何核验/怎么样”类问题，不要把未确认内容写成事实。
 7. 问题要像真实用户会问 AI 的自然语言，避免重复“哪家好 推荐”。
 8. 如果有城市/地区，至少一半问题自然包含地区词；如果有品牌名，验证层和转化层必须包含品牌名。
+9. 不要默认使用培训行业词，例如“课程、报名、学员、通过率、复训、师资、校区”；只有项目资料明确属于培训/教育时才可使用。
+10. 不要把检测平台或模型名称写入问题文本，例如 DeepSeek、Kimi、豆包、文心、通义、ChatGPT、Gemini。
+11. 如果项目资料里的 industry_template 包含 positive_examples，请学习它的问法结构；如果包含 negative_examples 或 forbidden_terms，请避免复写这些问题和词。
 
 ## 项目资料
 {{project_context_json}}
@@ -38,12 +41,12 @@
         {
           "question_text": "具体问题",
           "question_type": "category_recommendation|scenario_demand|brand_verification|conversion_consultation|comparison|price|qualification",
-          "tags": "地区,资质,价格",
+          "tags": "地区,可信,价格",
           "keyword_breakdown": {"region_terms": [], "service_terms": [], "trust_terms": [], "price_terms": [], "scenario_terms": []},
           "question_formula": "地域词 + 品类词 + 判断/推荐/核验意图",
           "business_value": "high|medium|low",
-          "evidence_support": "回答这个问题需要哪些已确认事实，如资质编号、地址、价格、案例、通过率、产品参数等",
-          "content_actionability": "适合补什么内容，如资质核验指南、FAQ、对比测评、本地服务页、案例稿等",
+          "evidence_support": "回答这个问题需要哪些已确认事实，如认证/资质（如适用）、地址、价格、案例、评价、交付结果、产品参数等",
+          "content_actionability": "适合补什么内容，如可信核验指南、FAQ、对比测评、本地服务页、产品页、案例稿等",
           "recommended_platforms": "baijiahao,zhihu,website,official_account",
           "priority": 85,
           "sample_policy": "mvp",

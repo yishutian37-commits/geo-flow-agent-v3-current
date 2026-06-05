@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 from app.core.database import get_db
 from app.models.project import Project
 from app.models.question import Question, QuestionGroup
+from app.services.question_template_learning import record_question_template_feedback
 from app.schemas.question import (
     QuestionCreate,
     QuestionUpdate,
@@ -62,6 +63,50 @@ def _question_to_dict(question: Question) -> dict:
         "focus": question.focus,
         "created_at": question.created_at.isoformat() if question.created_at else None,
     }
+
+
+async def _project_for_group(db: AsyncSession, group: QuestionGroup) -> Optional[Project]:
+    result = await db.execute(select(Project).where(Project.id == group.project_id))
+    return result.scalar_one_or_none()
+
+
+def _update_action(before: dict, after: dict) -> str:
+    changed = {
+        key
+        for key in set(before.keys()) | set(after.keys())
+        if before.get(key) != after.get(key)
+    }
+    if changed and changed <= {"enabled"}:
+        return "toggle_enabled"
+    if changed and changed <= {"focus"}:
+        return "toggle_focus"
+    return "update_question"
+
+
+async def _record_question_learning_event(
+    db: AsyncSession,
+    *,
+    project: Optional[Project],
+    group_id: UUID,
+    question_id: Optional[UUID],
+    action: str,
+    before: Optional[dict] = None,
+    after: Optional[dict] = None,
+) -> None:
+    if not project:
+        return
+    await record_question_template_feedback(
+        db,
+        project_id=str(project.id),
+        industry=str(project.industry or "default"),
+        group_id=str(group_id),
+        question_id=str(question_id) if question_id else None,
+        action=action,
+        before_text=(before or {}).get("question_text"),
+        after_text=(after or {}).get("question_text"),
+        before_payload=before,
+        after_payload=after,
+    )
 
 
 @router.get("/groups")
@@ -166,6 +211,7 @@ async def create_question(
     group = result.scalar_one_or_none()
     if not group:
         raise HTTPException(status_code=404, detail="Question group not found")
+    project = await _project_for_group(db, group)
 
     question = Question(
         group_id=group_id,
@@ -184,6 +230,16 @@ async def create_question(
         focus=data.focus,
     )
     db.add(question)
+    await db.flush()
+    after = _question_to_dict(question)
+    await _record_question_learning_event(
+        db,
+        project=project,
+        group_id=group_id,
+        question_id=question.id,
+        action="create_question",
+        after=after,
+    )
     await db.commit()
     await db.refresh(question)
     return _question_to_dict(question)
@@ -220,14 +276,30 @@ async def update_question(
     db: AsyncSession = Depends(get_db)
 ):
     """更新问题"""
-    result = await db.execute(select(Question).where(Question.id == question_id))
+    result = await db.execute(
+        select(Question)
+        .where(Question.id == question_id)
+        .options(selectinload(Question.group))
+    )
     question = result.scalar_one_or_none()
     if not question:
         raise HTTPException(status_code=404, detail="Question not found")
 
+    before = _question_to_dict(question)
     updates = data.model_dump(exclude_unset=True)
     for key, value in updates.items():
         setattr(question, key, value)
+    await db.flush()
+    after = _question_to_dict(question)
+    await _record_question_learning_event(
+        db,
+        project=await _project_for_group(db, question.group),
+        group_id=question.group_id,
+        question_id=question.id,
+        action=_update_action(before, after),
+        before=before,
+        after=after,
+    )
     await db.commit()
     await db.refresh(question)
     return _question_to_dict(question)
@@ -239,10 +311,24 @@ async def delete_question(
     db: AsyncSession = Depends(get_db)
 ):
     """删除问题"""
-    result = await db.execute(select(Question).where(Question.id == question_id))
+    result = await db.execute(
+        select(Question)
+        .where(Question.id == question_id)
+        .options(selectinload(Question.group))
+    )
     question = result.scalar_one_or_none()
     if not question:
         raise HTTPException(status_code=404, detail="Question not found")
+    before = _question_to_dict(question)
+    project = await _project_for_group(db, question.group)
+    await _record_question_learning_event(
+        db,
+        project=project,
+        group_id=question.group_id,
+        question_id=question.id,
+        action="delete_question",
+        before=before,
+    )
     await db.delete(question)
     await db.commit()
     return {"ok": True}

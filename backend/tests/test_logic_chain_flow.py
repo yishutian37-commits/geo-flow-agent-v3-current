@@ -14,6 +14,9 @@ from app.main import repair_reserved_local_user_emails
 from app.api.v1.endpoints.baseline_runs import promote_monitoring_run_to_baseline
 from app.api.v1.endpoints.projects import (
     ContentMatrixRequest,
+    _build_question_generation_strategy,
+    _build_template_groups,
+    _looks_like_ai_platform_keyword_misuse,
     generate_content_matrix,
     generate_question_bank,
 )
@@ -21,7 +24,7 @@ from app.api.v1.endpoints.monitoring import (
     SampleContentTaskRequest,
     create_content_task_from_sample,
 )
-from app.api.v1.endpoints.questions import create_question, create_question_group
+from app.api.v1.endpoints.questions import create_question, create_question_group, delete_question, update_question
 from app.core.database import Base
 from app.models.baseline_run import BaselineRun
 from app.models.brand import Brand
@@ -29,6 +32,7 @@ from app.models.brand_fact import BrandFact
 from app.models.content_task import ContentTask
 from app.models.monitoring import MonitoringRun, MonitoringSample
 from app.models.question import Question, QuestionGroup
+from app.models.question_template_feedback import QuestionTemplateFeedback
 from app.models.report_archive import ReportArchive
 from app.models.sentiment import SentimentRecord
 from app.models.user import User
@@ -36,10 +40,78 @@ from app.schemas.baseline_run import BaselinePromoteRequest
 from app.schemas.brand import BrandCreate
 from app.schemas.content_draft import ContentDraftCreate
 from app.schemas.project import ProjectCreate
-from app.schemas.question import QuestionCreate, QuestionGroupCreate
+from app.schemas.question import QuestionCreate, QuestionGroupCreate, QuestionUpdate
 from app.schemas.user import UserOut
 from app.services.monitoring_service import MonitoringService
 from app.services.project_service import ProjectService
+from app.services.question_template_learning import build_question_template_suggestions
+
+
+def test_question_templates_stay_industry_aware_and_do_not_use_ai_platform_terms():
+    cases = [
+        {
+            "industry": "manufacturing_b2b",
+            "region": "成都",
+            "brand": "玄铁猫眼",
+            "notes": "工业视觉检测设备、产线质检、企业采购",
+            "facts": [
+                "主营工业视觉检测设备，服务电子制造和汽车零部件产线。",
+                "拥有ISO质量管理体系认证。",
+            ],
+            "expected_terms": ["工业视觉检测设备供应商", "采购"],
+            "forbidden_terms": ["服务机构推荐", "个人报名", "报名", "学员", "复训", "师资", "校区", "通过率"],
+        },
+        {
+            "industry": "local_life",
+            "region": "苏州",
+            "brand": "霜桥小炉",
+            "notes": "社区餐饮、夜宵、门店评价、预约",
+            "facts": [
+                "主打苏式小炉砂锅和夜宵堂食。",
+                "门店位于苏州市姑苏区。",
+            ],
+            "expected_terms": ["餐饮门店", "到店"],
+            "forbidden_terms": ["服务机构推荐", "企业采购", "个人报名", "报名", "学员", "复训", "师资", "校区", "通过率", "资质证书"],
+        },
+        {
+            "industry": "consumer_brand",
+            "region": "深圳",
+            "brand": "北纬零糖",
+            "notes": "低糖饮品、年轻消费者、线上购买、配料表",
+            "facts": [
+                "产品为低糖气泡饮，已在线上渠道销售。",
+                "配料表标注赤藓糖醇和果汁含量。",
+            ],
+            "expected_terms": ["低糖饮品品牌", "购买"],
+            "forbidden_terms": ["服务机构推荐", "企业采购", "个人报名", "报名", "学员", "复训", "师资", "校区", "通过率", "资质证书"],
+        },
+    ]
+    platform_terms = ["deepseek", "kimi", "豆包", "qwen", "moonshot", "文心", "chatgpt", "gemini"]
+
+    for case in cases:
+        project = SimpleNamespace(
+            name=f"{case['brand']}有限公司",
+            industry=case["industry"],
+            region=case["region"],
+            notes=case["notes"],
+            target_ai_products="DeepSeek,Kimi,豆包",
+        )
+        facts = [
+            SimpleNamespace(public_wording=value, value=value, fact_type="service", status="confirmed")
+            for value in case["facts"]
+        ]
+        groups = _build_template_groups(project, case["brand"], facts)
+        questions = [q["question_text"] for group in groups for q in group["questions"]]
+        strategy = _build_question_generation_strategy(project, case["brand"], facts)
+        joined = " ".join(questions)
+
+        assert len(groups) >= 4
+        assert len(questions) >= 25
+        assert strategy["keyword_breakdown"]["service_terms"]
+        assert not any(_looks_like_ai_platform_keyword_misuse(question) for question in questions)
+        assert not any(term in joined.lower() for term in platform_terms)
+        assert any(term in joined for term in case["expected_terms"])
+        assert not any(term in joined for term in case["forbidden_terms"])
 
 
 @pytest.mark.asyncio
@@ -58,7 +130,7 @@ async def test_project_to_question_content_monitoring_baseline_flow_is_connected
                     industry="education_training",
                     region="包头",
                     budget=1000,
-                    target_ai_products="豆包,Kimi",
+                    target_ai_products="DeepSeek,Kimi,豆包",
                     notes="CAAC无人机执照培训和无人机科普基地",
                 ),
                 owner_id=None,
@@ -83,6 +155,15 @@ async def test_project_to_question_content_monitoring_baseline_flow_is_connected
                 project.id,
                 replace_existing=True,
                 db=db,
+            )
+            generated_question_texts = [
+                question["question_text"]
+                for group in first_bank["groups"]
+                for question in group["questions"]
+            ]
+            assert not any(
+                "deepseek" in text.lower() or "kimi" in text.lower() or "豆包" in text
+                for text in generated_question_texts
             )
             active_after_first = await _count_groups(db, project.id, status="active")
             assert first_bank["generated_groups"] >= 4
@@ -185,6 +266,69 @@ async def test_project_to_question_content_monitoring_baseline_flow_is_connected
                 )
             ).scalar_one()
             assert baseline_rows == 1
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_question_edits_create_template_learning_suggestions():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", future=True)
+    session_maker = async_sessionmaker(engine, expire_on_commit=False)
+
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+        async with session_maker() as db:
+            project = await ProjectService(db).create_project(
+                ProjectCreate(
+                    name="玄铁视觉",
+                    industry="manufacturing_b2b",
+                    region="深圳",
+                    notes="工业视觉检测设备、产线质检、企业采购",
+                ),
+                owner_id=None,
+            )
+            group = await create_question_group(
+                QuestionGroupCreate(
+                    project_id=project.id,
+                    layer="pool_layer",
+                    intent_name="本地推荐/入池",
+                    representative_question="深圳工业视觉检测设备供应商怎么选？",
+                ),
+                db=db,
+            )
+            good_question = await create_question(
+                group_id=group["id"],
+                data=QuestionCreate(question_text="深圳工业视觉检测设备供应商怎么选？"),
+                db=db,
+            )
+            updated_question = await update_question(
+                good_question["id"],
+                QuestionUpdate(question_text="深圳工业视觉质检供应商怎么核验案例？"),
+                db=db,
+            )
+            bad_question = await create_question(
+                group_id=group["id"],
+                data=QuestionCreate(question_text="深圳工业视觉检测设备培训报名靠谱吗？"),
+                db=db,
+            )
+            await delete_question(bad_question["id"], db=db)
+
+            feedback_count = (
+                await db.execute(select(func.count()).select_from(QuestionTemplateFeedback))
+            ).scalar_one()
+            assert feedback_count >= 4
+
+            suggestions = await build_question_template_suggestions(db, industry=project.industry)
+            assert len(suggestions) == 1
+            suggestion = suggestions[0]
+            joined_positive = " ".join(suggestion["positive_examples"])
+            joined_negative = " ".join(suggestion["negative_examples"])
+            assert suggestion["industry"] == project.industry
+            assert updated_question["question_text"] in joined_positive
+            assert bad_question["question_text"] in joined_negative
+            assert "报名" in suggestion["add_forbidden_terms"]
     finally:
         await engine.dispose()
 

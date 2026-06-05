@@ -6,6 +6,7 @@ from app.models.corpus_item import CorpusItem
 from app.models.source_asset import SourceAsset
 from app.models.channel_account import ChannelAccount
 from app.models.question import QuestionGroup, Question
+from app.models.question_template_feedback import QuestionTemplateFeedback
 from app.models.model_target import ModelTarget
 from app.models.baseline_run import BaselineRun
 from app.models.content_task import ContentTask
@@ -30,6 +31,7 @@ __all__ = [
     "ChannelAccount",
     "QuestionGroup",
     "Question",
+    "QuestionTemplateFeedback",
     "ModelTarget",
     "BaselineRun",
     "ContentTask",
