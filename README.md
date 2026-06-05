@@ -346,7 +346,7 @@ release/
 当前远程仓库：
 
 ```text
-https://github.com/yishutian37-commits/geo-flow-agent-v2
+https://github.com/yishutian37-commits/geo-flow-agent-v3
 ```
 
 默认不提交：
