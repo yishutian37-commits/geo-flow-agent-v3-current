@@ -8,6 +8,9 @@ from typing import TYPE_CHECKING, List, Dict, Any, Optional
 from uuid import UUID
 from datetime import datetime, timezone
 
+from app.prompts.templates import render_prompt_template
+from app.services.platform_policy import check_platform_policy, get_platform_policy, platform_policy_prompt_text
+
 if TYPE_CHECKING:
     from app.models.content_task import ContentTask
     from app.models.content_draft import ContentDraft
@@ -517,7 +520,19 @@ class ProductionAgent:
             "name": template["name"],
             "instruction": f"按照{template['name']}的目标组织内容，优先补齐AI采信所需的证据。",
         })
-        platform_rule = self.PLATFORM_RULES.get(platform, self.PLATFORM_RULES["media"])
+        platform_rule = dict(self.PLATFORM_RULES.get(platform, self.PLATFORM_RULES["media"]))
+        platform_policy = get_platform_policy(platform)
+        platform_rule.update({
+            "name": platform_policy.get("name", platform_rule.get("name", platform)),
+            "style": platform_policy.get("style", platform_rule.get("style", "")),
+            "length": platform_policy.get("length", platform_rule.get("length", "")),
+            "format": platform_policy.get("format", platform_rule.get("format", "")),
+            "taboos": list(dict.fromkeys(
+                list(platform_rule.get("taboos", []))
+                + list(platform_policy.get("forbidden_patterns", []))
+                + list(platform_policy.get("warning_patterns", []))
+            )),
+        })
 
         facts_text = "\n".join([
             f"- [{f.fact_type}] {f.public_wording or f.value} (ID: {f.id})"
@@ -578,95 +593,33 @@ class ProductionAgent:
                 if value
             )
 
-        return f"""请基于项目资料和已确认事实库，生成一篇{type_detail['name']}。
+        publishable_fact_contract = (
+            "有。可以引用已确认事实。"
+            if has_publishable_facts
+            else "没有。必须写成资料不足版草稿：只能使用项目名、行业、地区、用户问题和通用选择标准；涉及资质/价格/案例/地址/电话/通过率/证书编号时，必须写成“建议向机构核验/待补充资料”，不能写成品牌已经具备。"
+        )
 
-## 文章要求
-- 类型: {type_detail['name']}
-- 平台: {platform_rule['name']}
-- 风格: {platform_rule['style']}
-- 长度: {platform_rule['length']}
-- 结构: {', '.join(template['structure'])}
-- 专项要求: {type_detail['instruction']}
-- 内容层级: {content_task.layer}
-- 优先级: {content_task.priority}
-
-## 项目与品牌上下文
-{project_text or '暂无'}
-
-## 关联问题矩阵上下文
-{question_text or '暂无'}
-
-## 上一版草稿（如有，仅用于按反馈重写参考）
-{source_draft_context or '暂无'}
-
-## 本次优化后的重写提示词（如有，必须优先执行）
-{feedback_context or '暂无'}
-
-## 已确认事实库（可直接引用）
-{facts_text}
-
-## 待确认资料（只可作为补资料方向，禁止写成已发生事实）
-{pending_facts_text}
-
-## 行文画像（如有，必须遵守）
-{profile_text or '暂无'}
-
-## 未折叠反馈与写作规则（必须遵守）
-{rules_text or '暂无'}
-
-## 写作规范
-1. 确定性事实只能来自“已确认事实库”，禁止编造未确认信息
-2. 优先使用 public_wording 作为公开表述
-3. 禁止虚假承诺、极限词、高风险绝对化表述
-4. 包含具体场景、真实案例、结构化信息，降低模板化
-5. 必须围绕“AI为什么会推荐/采信这家企业或品牌”组织内容，优先补齐关联问题矩阵的证据需求
-6. 如果是2B采购场景，重点写厂家/机构身份、资质证书、参数/课程、案例、交付能力、售后响应
-7. 如果是2C消费或个人报名场景，重点写品牌定位、真实体验、口碑证据、适用人群、购买/报名渠道和售后保障
-8. 正文区域禁止输出JSON、title_candidates、代码围栏、Markdown标题或加粗符号；标题只放在元数据里，不要在正文第一行重复
-9. 当前是否有可发布事实：{"有。可以引用已确认事实。" if has_publishable_facts else "没有。必须写成资料不足版草稿：只能使用项目名、行业、地区、用户问题和通用选择标准；涉及资质/价格/案例/地址/电话/通过率/证书编号时，必须写成“建议向机构核验/待补充资料”，不能写成品牌已经具备。"}
-10. 禁止输出任何方括号占位符，例如 [品牌名]、[行业]、[地区]、[公司主体]；未知信息必须改写为“建议向官方核验”或“待补充资料”，不能保留模板占位符
-11. 如果存在“本次用户反馈”，它是已经优化后的文章重写提示词，必须基于上一版草稿进行实质性改写，并在标题、结构、语气、事实表达或证据补齐方式上回应反馈；不要只复述反馈
-12. 处理反馈时必须保持原文章生成合同稳定：项目主体、已确认事实边界、问题矩阵意图、文章类型、平台风格和输出格式不得因反馈而漂移；如反馈要求写未确认事实，只能改成待核验或补资料表达
-
-## 输出格式（必须严格遵守）
-
-先输出 JSON 元数据，再输出分隔符和纯文本正文：
-
-```json
-{{
-  "title_candidates": ["标题1", "标题2", "标题3"],
-  "aida": {{
-    "attention": "吸引注意",
-    "interest": "建立兴趣",
-    "desire": "强化信任与欲望",
-    "action": "行动建议"
-  }},
-  "platform_notes": "平台适配说明"
-}}
-```
-
----FULL_CONTENT---
-这里写完整正文。正文不要包含一级标题，不要用JSON包裹，不要加引号，不要使用Markdown符号。
-
-## 备用兼容格式
-如果无法使用上面的格式，才使用以下标记：
-
-[TITLE]
-文章标题（一行，不超过30字）
-
-[BODY]
-文章正文（符合平台风格和长度要求）
-
-[FACT_REFS]
-- [fact_type] wording (ID: brand_fact_id)
-- [fact_type] wording (ID: brand_fact_id)
-
-[COMPLIANCE_CHECK]
-- 检查项: 结果（通过/问题）
-- 检查项: 结果（通过/问题）
-
-[END]
-"""
+        return render_prompt_template("geo/article_writer_v1.md", {
+            "article_type_name": type_detail["name"],
+            "platform_name": platform_rule["name"],
+            "platform_style": platform_rule["style"],
+            "platform_length": platform_rule["length"],
+            "platform_format": platform_rule.get("format", ""),
+            "template_structure": ", ".join(template["structure"]),
+            "type_instruction": type_detail["instruction"],
+            "content_layer": content_task.layer,
+            "priority": content_task.priority,
+            "platform_policy_text": platform_policy_prompt_text(platform),
+            "project_text": project_text or "暂无",
+            "question_text": question_text or "暂无",
+            "source_draft_context": source_draft_context or "暂无",
+            "feedback_context": feedback_context or "暂无",
+            "facts_text": facts_text,
+            "pending_facts_text": pending_facts_text,
+            "profile_text": profile_text or "暂无",
+            "rules_text": rules_text or "暂无",
+            "publishable_fact_contract": publishable_fact_contract,
+        })
 
     def check_compliance(self, draft_text: str, brand_facts: List[BrandFact]) -> List[Dict[str, Any]]:
         """
@@ -768,6 +721,13 @@ class ProductionAgent:
 
         return issues
 
+    def check_platform_compliance(self, draft_text: str, platform: Optional[str]) -> List[Dict[str, Any]]:
+        """
+        平台发文政策检查。
+        与事实/通用合规分开，便于前端展示“平台风险”而不是一概拦截。
+        """
+        return check_platform_policy(draft_text, platform)
+
     def generate_fact_references(
         self,
         draft_text: str,
@@ -848,7 +808,14 @@ class ProductionAgent:
         compliance_issues = self.check_compliance(draft.body or "", brand_facts)
         issues.extend(compliance_issues)
 
-        # 4. 检查风险等级
+        # 4. 平台政策检查
+        platform_issues = self.check_platform_compliance(
+            f"{draft.title or ''}\n{draft.body or ''}",
+            getattr(draft, "platform", None),
+        )
+        issues.extend(platform_issues)
+
+        # 5. 检查风险等级
         if draft.risk_level == "high":
             issues.append({
                 "type": "high_risk",
@@ -856,10 +823,14 @@ class ProductionAgent:
                 "message": "草稿被标记为高风险，需额外审核",
             })
 
+        blocking_issues = [i for i in issues if i.get("severity") == "high"]
+        warning_issues = [i for i in issues if i.get("severity") != "high"]
+
         return {
-            "can_publish": len(issues) == 0,
+            "can_publish": len(blocking_issues) == 0,
             "issues": issues,
             "fact_references": refs,
             "total_issues": len(issues),
-            "high_severity_issues": len([i for i in issues if i.get("severity") == "high"]),
+            "high_severity_issues": len(blocking_issues),
+            "warning_issues": len(warning_issues),
         }

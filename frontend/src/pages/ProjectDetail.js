@@ -142,6 +142,7 @@ function ProjectDetail() {
   const [questionGroups, setQuestionGroups] = useState([]);
   const [questionsLoading, setQuestionsLoading] = useState(false);
   const [generatingQuestions, setGeneratingQuestions] = useState(false);
+  const [questionGenerationStrategy, setQuestionGenerationStrategy] = useState(null);
   const [generatingContentTasks, setGeneratingContentTasks] = useState(false);
   const [addQuestionVisible, setAddQuestionVisible] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState(null);
@@ -281,6 +282,7 @@ function ProjectDetail() {
       const brandName = projectBrands[0]?.brand_name || project?.name || '该品牌';
       const res = await projectsApi.generateQuestionBank(id, brandName);
       const sourceText = res.data?.source === 'llm' ? 'AI生成' : '本地矩阵模板';
+      setQuestionGenerationStrategy(res.data?.generation_strategy || null);
       message.success(`问题库已生成：${res.data?.generated_groups || 0}组 / ${res.data?.generated_questions || 0}条（${sourceText}）`);
       loadQuestions();
     } catch (error) {
@@ -582,6 +584,12 @@ function ProjectDetail() {
     questionForm.resetFields();
     questionForm.setFieldsValue({
       question_type: 'brand_reputation',
+      keyword_breakdown: '',
+      question_formula: '',
+      business_value: 'medium',
+      evidence_support: '',
+      content_actionability: '',
+      recommended_platforms: '',
       priority: 50,
       sample_policy: 'mvp',
       enabled: true,
@@ -597,6 +605,12 @@ function ProjectDetail() {
       question_text: question.question_text,
       question_type: question.question_type || 'brand_reputation',
       tags: question.tags || '',
+      keyword_breakdown: question.keyword_breakdown || '',
+      question_formula: question.question_formula || '',
+      business_value: question.business_value || 'medium',
+      evidence_support: question.evidence_support || '',
+      content_actionability: question.content_actionability || '',
+      recommended_platforms: question.recommended_platforms || '',
       priority: question.priority || 50,
       sample_policy: question.sample_policy || 'mvp',
       enabled: question.enabled !== false,
@@ -1017,6 +1031,34 @@ function ProjectDetail() {
               生成内容任务
             </Button>
           </Space>
+          {questionGenerationStrategy && (
+            <Alert
+              type="info"
+              showIcon
+              style={{ marginBottom: 16 }}
+              message="本轮问题生成依据"
+              description={(
+                <Space direction="vertical" size={6}>
+                  <Text>
+                    {questionGenerationStrategy.principle}
+                  </Text>
+                  <Text type="secondary">
+                    关键词：
+                    {Object.entries(questionGenerationStrategy.keyword_breakdown || {})
+                      .filter(([key]) => key !== 'fact_source_preview')
+                      .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.slice(0, 8).join('、') : value}`)
+                      .join('；')}
+                  </Text>
+                  <Text type="secondary">
+                    问题公式：
+                    {(questionGenerationStrategy.question_formulas || [])
+                      .map((item) => `${item.name}=${item.formula}`)
+                      .join('；')}
+                  </Text>
+                </Space>
+              )}
+            />
+          )}
           <Spin spinning={questionsLoading}>
             {questionGroups.length === 0 ? (
               <Empty description="暂无问题库，点击上方按钮生成 GEO 问题矩阵" image={Empty.PRESENTED_IMAGE_SIMPLE} />
@@ -1073,6 +1115,21 @@ function ProjectDetail() {
                                   <Tag key={`${q.id}-${tag}`} color="geekblue">{tag}</Tag>
                                 ))}
                               </Space>
+                            )}
+                            {(q.question_formula || q.business_value || q.recommended_platforms) && (
+                              <Space wrap size={6}>
+                                {q.question_formula && <Tag color="purple">公式：{q.question_formula}</Tag>}
+                                {q.business_value && <Tag color={q.business_value === 'high' ? 'red' : q.business_value === 'medium' ? 'orange' : 'default'}>商业价值：{q.business_value}</Tag>}
+                                {parseTags(q.recommended_platforms).map((platform) => (
+                                  <Tag key={`${q.id}-platform-${platform}`} color="cyan">{platform}</Tag>
+                                ))}
+                              </Space>
+                            )}
+                            {q.evidence_support && (
+                              <Text type="secondary">证据支撑：{q.evidence_support}</Text>
+                            )}
+                            {q.content_actionability && (
+                              <Text type="secondary">内容建议：{q.content_actionability}</Text>
                             )}
                           </Space>
                         </List.Item>
@@ -1229,6 +1286,7 @@ function ProjectDetail() {
         title={editingQuestion ? '编辑问题' : '添加问题'}
         open={addQuestionVisible}
         onOk={() => questionForm.submit()}
+        width={760}
         onCancel={() => {
           setAddQuestionVisible(false);
           setEditingQuestion(null);
@@ -1257,6 +1315,36 @@ function ProjectDetail() {
           </Row>
           <Form.Item name="tags" label="标签">
             <Input placeholder="价格、资质、地址、口碑、就业、周末班，多个标签用逗号分隔" />
+          </Form.Item>
+          <Form.Item name="keyword_breakdown" label="关键词拆解">
+            <TextArea rows={2} placeholder="可填写 JSON 或自然语言，例如：地区词、品类词、信任词、价格词" />
+          </Form.Item>
+          <Form.Item name="question_formula" label="问题公式">
+            <Input placeholder="例如：地域词 + 品类词 + 资质核验意图" />
+          </Form.Item>
+          <Row gutter={12}>
+            <Col span={12}>
+              <Form.Item name="business_value" label="商业价值" initialValue="medium">
+                <Select
+                  options={[
+                    { value: 'high', label: '高' },
+                    { value: 'medium', label: '中' },
+                    { value: 'low', label: '低' },
+                  ]}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="recommended_platforms" label="推荐平台">
+                <Input placeholder="baijiahao, zhihu, website" />
+              </Form.Item>
+            </Col>
+          </Row>
+          <Form.Item name="evidence_support" label="证据支撑">
+            <TextArea rows={2} placeholder="回答这个问题需要哪些事实或信源" />
+          </Form.Item>
+          <Form.Item name="content_actionability" label="内容可执行性">
+            <TextArea rows={2} placeholder="这个问题适合补什么文章、FAQ、官网页或平台版本" />
           </Form.Item>
           <Row gutter={12}>
             <Col span={8}>

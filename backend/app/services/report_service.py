@@ -22,6 +22,7 @@ from app.models.publish_record import PublishRecord
 from app.models.question import QuestionGroup
 from app.models.source_asset import SourceAsset
 from app.services.monitoring_service import MonitoringService
+from app.services.platform_policy import get_platform_policy
 
 
 ACCEPTANCE_MIN_SAMPLE_SIZE = 20
@@ -90,6 +91,7 @@ class ReportService:
                 "content_published": data["publish_summary"]["total_published"],
                 "source_assets": data["source_summary"]["total"],
                 "active_source_assets": data["source_summary"]["active"],
+                "platforms_covered": data["platform_coverage"]["covered_platforms"],
                 "monitoring_sample_count": monitoring.get("sample_count", 0),
                 "confidence_level": monitoring.get("confidence_level"),
             },
@@ -98,6 +100,7 @@ class ReportService:
             "question_summary": data["question_summary"],
             "content_summary": data["content_summary"],
             "publish_summary": data["publish_summary"],
+            "platform_coverage": data["platform_coverage"],
             "monitoring_results": monitoring,
             "baseline_comparison": baseline_comparison,
             "acceptance_baseline": acceptance_baseline,
@@ -219,6 +222,7 @@ class ReportService:
             "question_summary": self._summarize_questions(question_groups),
             "content_summary": self._summarize_content(content_tasks),
             "publish_summary": self._summarize_publish_records(publish_records),
+            "platform_coverage": self._summarize_platform_coverage(publish_records),
             "published_content": [
                 {
                     "title": record.title,
@@ -368,6 +372,49 @@ class ReportService:
             "by_status": dict(status_counter),
         }
 
+    def _summarize_platform_coverage(self, records: list[PublishRecord]) -> Dict[str, Any]:
+        core_platforms = ["website", "official_account", "baijiahao", "zhihu", "toutiao"]
+        platform_counter = Counter((record.platform or "other") for record in records)
+        published_counter = Counter(
+            (record.platform or "other")
+            for record in records
+            if record.status == "published"
+        )
+        indexed_counter = Counter(
+            (record.platform or "other")
+            for record in records
+            if record.status == "published" and record.is_indexed
+        )
+        platforms = []
+        for platform, total in sorted(platform_counter.items()):
+            policy = get_platform_policy(platform)
+            platforms.append({
+                "platform": platform,
+                "platform_name": policy.get("name") or platform,
+                "records": total,
+                "published": published_counter.get(platform, 0),
+                "indexed": indexed_counter.get(platform, 0),
+                "recommended_content_types": policy.get("recommended_content_types") or [],
+                "contact_policy": policy.get("contact_policy"),
+                "ai_label_required": bool(policy.get("ai_label_required")),
+            })
+        missing_core_platforms = []
+        for platform in core_platforms:
+            if published_counter.get(platform, 0) == 0:
+                policy = get_platform_policy(platform)
+                missing_core_platforms.append({
+                    "platform": platform,
+                    "platform_name": policy.get("name") or platform,
+                    "recommended_content_types": policy.get("recommended_content_types") or [],
+                })
+        return {
+            "covered_platforms": len([item for item in platforms if item["published"] > 0]),
+            "total_platform_records": sum(platform_counter.values()),
+            "indexed_platform_records": sum(indexed_counter.values()),
+            "platforms": platforms,
+            "missing_core_platforms": missing_core_platforms,
+        }
+
     def _build_report_guardrails(self, report_type: str) -> Dict[str, Any]:
         return {
             "report_language": "阶段观察" if report_type == "client" else "内部诊断",
@@ -476,6 +523,7 @@ class ReportService:
         sources = data.get("source_summary", {})
         questions = data.get("question_summary", {})
         publish = data.get("publish_summary", {})
+        platform_coverage = data.get("platform_coverage", {})
         monitoring = data.get("monitoring_results", {})
         acceptance = data.get("acceptance_baseline", {})
         metrics = monitoring.get("metrics", {}) if isinstance(monitoring, dict) else {}
@@ -491,6 +539,13 @@ class ReportService:
             steps.append("补齐入池、验证、权重、转化四层问题矩阵，避免只围绕单一推荐类问题优化。")
         if publish.get("total_published", 0) < 3:
             steps.append("优先完成基础验证层和转化承接层内容发布，形成可被引用的公开信息资产。")
+        missing_platforms = platform_coverage.get("missing_core_platforms") or []
+        if missing_platforms:
+            names = "、".join(
+                (item.get("platform_name") or item.get("platform") or "")
+                for item in missing_platforms[:3]
+            )
+            steps.append(f"补齐核心公开平台内容资产：{names}。优先发布资质核验、品牌问答、本地指南和对比说明，提升 AI 回答的可引用线索。")
         if monitoring.get("sample_count", 0) < 5:
             steps.append("完成至少 5 个样本的检测，记录品牌提及、推荐、引用和可见度。")
         elif not acceptance.get("acceptance_ready"):
@@ -550,6 +605,7 @@ class ReportService:
         acceptance = report.get("acceptance_baseline") or {}
         guardrails = report.get("report_guardrails") or {}
         published = report.get("published_content", [])
+        platform_coverage = report.get("platform_coverage") or {}
         lines = [
             f"# {project['name']} GEO阶段报告",
             "",
@@ -586,6 +642,24 @@ class ReportService:
         ]
         for note in acceptance.get("notes", []):
             lines.append(f"- 说明：{note}")
+        lines.append("")
+
+        lines.append("## 平台内容资产覆盖")
+        lines.append(f"- 已覆盖发布平台：{platform_coverage.get('covered_platforms', 0)} 个")
+        lines.append(f"- 已收录发布记录：{platform_coverage.get('total_platform_records', 0)} 条")
+        missing_platforms = platform_coverage.get("missing_core_platforms") or []
+        if missing_platforms:
+            missing_names = "、".join((item.get("platform_name") or item.get("platform") or "") for item in missing_platforms)
+            lines.append(f"- 待补核心平台：{missing_names}")
+        else:
+            lines.append("- 核心平台已具备发布记录")
+        for item in (platform_coverage.get("platforms") or [])[:8]:
+            content_types = "、".join(item.get("recommended_content_types") or [])
+            lines.append(
+                f"- {item.get('platform_name') or item.get('platform')}："
+                f"发布 {item.get('published', 0)} 条，收录 {item.get('indexed', 0)} 条"
+                f"{'；适合内容：' + content_types if content_types else ''}"
+            )
         lines.append("")
 
         if monitoring.get("metrics"):

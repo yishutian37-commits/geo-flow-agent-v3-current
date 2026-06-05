@@ -30,6 +30,7 @@ from app.services.wilson_stats import (
     determine_confidence_level,
     format_ci_report,
 )
+from app.services.platform_policy import get_platform_policy
 
 
 NEGATIVE_SENTIMENT_TYPES = {
@@ -714,6 +715,32 @@ class MonitoringService:
                 "reason": "回答中没有出现明确引用或来源匹配，建议补充官网、资质证书、案例页、媒体报道等可被引用的公开资料。",
                 "priority": "medium",
                 "linked_metric": "citations",
+            })
+
+        if (
+            (recommendation_rate is not None and recommendation_rate < 40)
+            or (explicit_citations == 0 and inferred_matches == 0)
+        ):
+            recommended_platforms = ["website", "baijiahao", "zhihu", "toutiao"]
+            platform_names = []
+            content_types = []
+            for platform in recommended_platforms:
+                policy = get_platform_policy(platform)
+                platform_names.append(policy.get("name") or platform)
+                content_types.extend(policy.get("recommended_content_types") or [])
+            unique_content_types = []
+            for item in content_types:
+                if item and item not in unique_content_types:
+                    unique_content_types.append(item)
+            candidates.append({
+                "recommendation_type": "补齐平台内容资产",
+                "reason": (
+                    f"建议优先补齐{'、'.join(platform_names[:4])}等公开平台内容。"
+                    f"内容方向可围绕{'、'.join(unique_content_types[:6])}，"
+                    "让 AI 回答更容易抓到资质、案例、价格流程和本地可信来源。"
+                ),
+                "priority": "high" if recommendation_rate is not None and recommendation_rate < 30 else "medium",
+                "linked_metric": "platform_assets",
             })
 
         if confidence_level in {"low", "very_low"}:

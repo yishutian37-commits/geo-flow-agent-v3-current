@@ -32,6 +32,7 @@ def _draft_to_dict(draft: ContentDraft) -> dict:
         "title": draft.title,
         "body": draft.body,
         "version": draft.version,
+        "platform": getattr(draft, "platform", None) or "media",
         "status": draft.status,
         "risk_level": draft.risk_level,
         "fact_refs": draft.fact_refs,
@@ -114,6 +115,7 @@ async def create_content_draft(
         title=data.title,
         body=data.body,
         version=data.version,
+        platform=data.platform,
         status=data.status,
         risk_level=data.risk_level,
         fact_refs=data.fact_refs,
@@ -284,18 +286,21 @@ async def generate_draft(
     agent = ProductionAgent()
 
     # 组装 Prompt
-    prompt = agent.generate_article_prompt(
-        task,
-        project_facts,
-        req.platform,
-        project=project,
-        brand=brand,
-        writing_profile=writing_profile,
-        active_rules=active_rules,
-        question_context=question_context,
-        feedback_context=req.feedback_context,
-        source_draft_context=source_draft_context,
-    )
+    try:
+        prompt = agent.generate_article_prompt(
+            task,
+            project_facts,
+            req.platform,
+            project=project,
+            brand=brand,
+            writing_profile=writing_profile,
+            active_rules=active_rules,
+            question_context=question_context,
+            feedback_context=req.feedback_context,
+            source_draft_context=source_draft_context,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"生成提示词失败: {str(e)}") from e
 
     try:
         # 真正调用 LLM
@@ -314,6 +319,7 @@ async def generate_draft(
 
         # 合规检查
         compliance_issues = agent.check_compliance(f"{title}\n{body}", project_facts)
+        compliance_issues.extend(agent.check_platform_compliance(f"{title}\n{body}", req.platform))
         if not publishable_facts:
             compliance_issues.insert(0, {
                 "type": "missing_publishable_facts",
@@ -339,6 +345,7 @@ async def generate_draft(
             title=title,
             body=body,
             version=_next_version(source_draft.version) if source_draft else "1.0",
+            platform=req.platform,
             status="draft",
             risk_level=risk_level,
             fact_refs=fact_refs_str,

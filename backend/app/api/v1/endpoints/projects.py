@@ -22,6 +22,7 @@ from app.models.brand import Brand
 from app.models.brand_fact import BrandFact
 from app.models.user import User
 from app.agents.strategy_agent import StrategyAgent
+from app.prompts.templates import render_prompt_template
 
 router = APIRouter()
 
@@ -343,6 +344,52 @@ def _priority_to_int(value: Any, default: int = 70) -> int:
         return default
 
 
+def _stringify_question_meta(value: Any, limit: int = 1000) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, (dict, list)):
+        text = json.dumps(value, ensure_ascii=False)
+    else:
+        text = str(value)
+    text = _clean_text(text, limit)
+    return text or None
+
+
+def _default_question_meta(question_text: str, layer: str, tags: str = "") -> Dict[str, str]:
+    text = question_text or ""
+    if layer == "verification_layer":
+        return {
+            "question_formula": "品牌/机构词 + 资质/口碑/真伪核验",
+            "business_value": "high",
+            "evidence_support": "需要已确认的资质证书、证书编号、地址、案例、通过率、官方可核验入口等事实。",
+            "content_actionability": "适合补资质核验指南、品牌FAQ、官网资质页、第三方媒体稿。",
+            "recommended_platforms": "website,official_faq,baijiahao,zhihu",
+        }
+    if layer == "conversion_layer":
+        return {
+            "question_formula": "品牌/服务词 + 价格/报名/地址/联系方式/流程",
+            "business_value": "high",
+            "evidence_support": "需要已确认的价格、服务范围、地址、报名流程、交付周期和公开联系方式等事实。",
+            "content_actionability": "适合补报名指南、价格说明、官网FAQ、公众号承接页。",
+            "recommended_platforms": "official_account,website,official_faq,baijiahao",
+        }
+    if layer == "weight_layer":
+        return {
+            "question_formula": "品牌/品类词 + 对比/排名/优势/避坑",
+            "business_value": "medium",
+            "evidence_support": "需要已确认的产品参数、服务能力、案例、荣誉、行业合规依据和可对比维度。",
+            "content_actionability": "适合补对比测评、选择标准、案例复盘、行业科普。",
+            "recommended_platforms": "zhihu,baijiahao,toutiao,media",
+        }
+    return {
+        "question_formula": "地域/品类/场景词 + 推荐/哪家好/怎么选",
+        "business_value": "medium",
+        "evidence_support": f"需要品牌主体、服务边界、地区覆盖、可信事实和用户场景证据。标签：{tags or '暂无'}",
+        "content_actionability": "适合补本地指南、品牌介绍、入池类媒体稿、问答内容。",
+        "recommended_platforms": "baijiahao,toutiao,media,website",
+    }
+
+
 def _normalize_layer(layer: Any, intent_name: str = "") -> str:
     value = str(layer or "").strip()
     if value in ALLOWED_LAYERS:
@@ -525,6 +572,12 @@ def _coerce_question_groups(parsed: Dict[str, Any]) -> List[Dict[str, Any]]:
                 raw_tags = item.get("tags") or item.get("labels") or ""
                 tags = "，".join(_split_terms(raw_tags)) if isinstance(raw_tags, str) else "，".join(str(tag) for tag in raw_tags[:8]) if isinstance(raw_tags, list) else ""
                 focus = bool(item.get("focus") or item.get("important") or False)
+                keyword_breakdown = _stringify_question_meta(item.get("keyword_breakdown") or item.get("keywords"), 1200)
+                question_formula = _stringify_question_meta(item.get("question_formula") or item.get("formula"), 500)
+                business_value = _stringify_question_meta(item.get("business_value") or item.get("commercial_value"), 100)
+                evidence_support = _stringify_question_meta(item.get("evidence_support") or item.get("required_facts") or item.get("evidence_need"), 1200)
+                content_actionability = _stringify_question_meta(item.get("content_actionability") or item.get("content_suggestion"), 1200)
+                recommended_platforms = _stringify_question_meta(item.get("recommended_platforms") or item.get("platforms"), 500)
             else:
                 q_text = item
                 q_priority = priority
@@ -532,14 +585,37 @@ def _coerce_question_groups(parsed: Dict[str, Any]) -> List[Dict[str, Any]]:
                 question_type = "brand_reputation"
                 tags = ""
                 focus = False
+                keyword_breakdown = None
+                question_formula = None
+                business_value = None
+                evidence_support = None
+                content_actionability = None
+                recommended_platforms = None
             q_text = _clean_text(q_text, 260)
             if not q_text or q_text in seen_questions:
                 continue
             seen_questions.add(q_text)
+            defaults = _default_question_meta(q_text, layer, tags)
+            keyword_breakdown = keyword_breakdown or json.dumps({
+                "question_terms": _split_terms(q_text),
+                "tags": _split_terms(tags),
+                "layer": layer,
+            }, ensure_ascii=False)
+            question_formula = question_formula or defaults["question_formula"]
+            business_value = business_value or defaults["business_value"]
+            evidence_support = evidence_support or defaults["evidence_support"]
+            content_actionability = content_actionability or defaults["content_actionability"]
+            recommended_platforms = recommended_platforms or defaults["recommended_platforms"]
             questions.append({
                 "question_text": q_text,
                 "question_type": question_type,
                 "tags": tags,
+                "keyword_breakdown": keyword_breakdown,
+                "question_formula": question_formula,
+                "business_value": business_value,
+                "evidence_support": evidence_support,
+                "content_actionability": content_actionability,
+                "recommended_platforms": recommended_platforms,
                 "priority": q_priority,
                 "sample_policy": sample_policy,
                 "enabled": True,
@@ -619,6 +695,9 @@ async def _generate_question_groups_with_llm(project, brand_name: str, facts: Li
 
 数量要求：生成 5 个问题组，每组 5-7 个问题，总量 25-35 个。
 """
+        prompt = render_prompt_template("geo/question_bank_v1.md", {
+            "project_context_json": json.dumps(context, ensure_ascii=False, indent=2),
+        })
         client = LLMClientFactory.create_client_from_config({
             "provider": config.provider,
             "model": config.model,
@@ -641,6 +720,51 @@ async def _generate_question_groups_with_llm(project, brand_name: str, facts: Li
         return None, "大模型返回的问题矩阵数量不足，已使用本地矩阵模板兜底"
     except Exception as exc:
         return None, f"大模型生成失败，已使用本地矩阵模板兜底：{str(exc)[:180]}"
+
+
+def _build_question_generation_strategy(project, brand_name: str, facts: List[BrandFact]) -> Dict[str, Any]:
+    fact_context, credentials, _ = _extract_fact_context(facts, limit=36)
+    service = _infer_service(project, brand_name, facts)
+    credential_terms = []
+    for item in credentials:
+        for term in _split_terms(item):
+            if term and term not in credential_terms:
+                credential_terms.append(term)
+    keyword_breakdown = {
+        "brand_terms": [term for term in _split_terms(brand_name) if term],
+        "geo_terms": [term for term in _split_terms(project.region) if term],
+        "industry_terms": [term for term in _split_terms(_industry_label(project.industry)) if term],
+        "service_terms": [term for term in _split_terms(service) if term],
+        "credential_terms": credential_terms[:12],
+        "fact_source_preview": fact_context[:500],
+    }
+    formulas = [
+        {
+            "layer": "pool_layer",
+            "name": "本地品类推荐",
+            "formula": "地区词 + 服务/品类词 + 哪家靠谱/推荐/怎么选",
+        },
+        {
+            "layer": "verification_layer",
+            "name": "资质与可信核验",
+            "formula": "品牌词 + 资质/证书/编号/地址 + 是否真实/如何核验",
+        },
+        {
+            "layer": "weight_layer",
+            "name": "对比与权重提升",
+            "formula": "品牌词 + 竞品/同类机构 + 优势/价格/案例/口碑对比",
+        },
+        {
+            "layer": "conversion_layer",
+            "name": "转化承接",
+            "formula": "品牌词 + 价格/流程/地址/预约/售后 + 具体怎么做",
+        },
+    ]
+    return {
+        "keyword_breakdown": keyword_breakdown,
+        "question_formulas": formulas,
+        "principle": "问题库优先模拟真实用户向 AI 提问的自然语言，并把事实库中的资质、产品、地址、价格、案例等可信信息转成可检测的问题线索。",
+    }
 
 
 @router.get("", response_model=List[ProjectOut])
@@ -1124,6 +1248,12 @@ async def generate_question_bank(
                 question_text=question_data["question_text"],
                 question_type=question_data.get("question_type") or "brand_reputation",
                 tags=question_data.get("tags"),
+                keyword_breakdown=question_data.get("keyword_breakdown"),
+                question_formula=question_data.get("question_formula"),
+                business_value=question_data.get("business_value"),
+                evidence_support=question_data.get("evidence_support"),
+                content_actionability=question_data.get("content_actionability"),
+                recommended_platforms=question_data.get("recommended_platforms"),
                 priority=question_data["priority"],
                 sample_policy=question_data["sample_policy"],
                 enabled=question_data.get("enabled", True),
@@ -1156,6 +1286,7 @@ async def generate_question_bank(
         "archived_groups": archived_groups,
         "source": source,
         "fallback_reason": fallback_reason,
+        "generation_strategy": _build_question_generation_strategy(project, effective_brand_name, facts),
         "generated_groups": len(created_groups),
         "generated_questions": len(created_questions),
         "groups": [
@@ -1170,6 +1301,14 @@ async def generate_question_bank(
                     {
                         "id": str(q.id),
                         "question_text": q.question_text,
+                        "question_type": q.question_type,
+                        "tags": q.tags,
+                        "keyword_breakdown": q.keyword_breakdown,
+                        "question_formula": q.question_formula,
+                        "business_value": q.business_value,
+                        "evidence_support": q.evidence_support,
+                        "content_actionability": q.content_actionability,
+                        "recommended_platforms": q.recommended_platforms,
                         "priority": q.priority,
                         "sample_policy": q.sample_policy,
                     }

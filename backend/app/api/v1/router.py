@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import projects, brands, brand_facts, corpus_items, source_assets, channel_accounts, publish_records, questions, monitoring, reports, ai_models, dashboard, content_tasks, content_drafts, writing_memory, approvals, model_targets, baseline_runs, sentiments, auth, users
+from app.api.v1.endpoints import projects, brands, brand_facts, corpus_items, source_assets, channel_accounts, publish_records, questions, monitoring, reports, ai_models, dashboard, content_tasks, content_drafts, writing_memory, approvals, model_targets, baseline_runs, sentiments, auth, users, platform_policies
 
 api_router = APIRouter()
 
@@ -25,3 +25,4 @@ api_router.include_router(monitoring.router, prefix="/monitoring", tags=["Monito
 api_router.include_router(reports.router, prefix="/reports", tags=["Reports"])
 api_router.include_router(ai_models.router, prefix="/ai-models", tags=["AI Models"])
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["Dashboard"])
+api_router.include_router(platform_policies.router, prefix="/platform-policies", tags=["Platform Policies"])

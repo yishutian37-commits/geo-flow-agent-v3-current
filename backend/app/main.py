@@ -176,6 +176,12 @@ async def ensure_runtime_schema(conn):
         for column_name, column_type in [
             ("question_type", "VARCHAR(100) NOT NULL DEFAULT 'brand_reputation'"),
             ("tags", "TEXT"),
+            ("keyword_breakdown", "TEXT"),
+            ("question_formula", "VARCHAR(500)"),
+            ("business_value", "VARCHAR(100)"),
+            ("evidence_support", "TEXT"),
+            ("content_actionability", "TEXT"),
+            ("recommended_platforms", "TEXT"),
             ("enabled", "BOOLEAN NOT NULL DEFAULT 1"),
             ("focus", "BOOLEAN NOT NULL DEFAULT 0"),
         ]:

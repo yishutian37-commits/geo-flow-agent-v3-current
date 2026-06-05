@@ -19,7 +19,10 @@ a = Analysis(
     ["desktop_server.py"],
     pathex=["."],
     binaries=[],
-    datas=[("app/data", "app/data")],
+    datas=[
+        ("app/data", "app/data"),
+        ("app/prompts/geo", "app/prompts/geo"),
+    ],
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
