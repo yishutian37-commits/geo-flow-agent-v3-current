@@ -116,7 +116,7 @@ async def list_question_groups(
     status: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db)
 ):
-    """鑾峰彇闂鎰忓浘缁勫垪琛?""
+    """获取问题意图组列表"""
     query = select(QuestionGroup)
     filters = []
     if project_id:
@@ -141,10 +141,10 @@ async def create_question_group(
     data: QuestionGroupCreate,
     db: AsyncSession = Depends(get_db)
 ):
-    """鍒涘缓闂鎰忓浘缁?""
+    """创建问题意图组"""
     project_result = await db.execute(select(Project.id).where(Project.id == data.project_id))
     if project_result.scalar_one_or_none() is None:
-        raise HTTPException(status_code=400, detail="闂缁勫繀椤荤粦瀹氬凡瀛樺湪鐨勯」鐩?)
+        raise HTTPException(status_code=400, detail="问题组必须绑定已存在的项目")
 
     group = QuestionGroup(
         project_id=data.project_id,
@@ -165,7 +165,7 @@ async def get_question_group(
     group_id: UUID,
     db: AsyncSession = Depends(get_db)
 ):
-    """鑾峰彇闂鎰忓浘缁勮鎯咃紙鍚棶棰樺垪琛級"""
+    """获取问题意图组详情（含问题列表）"""
     result = await db.execute(
         select(QuestionGroup)
         .where(QuestionGroup.id == group_id)
@@ -183,7 +183,7 @@ async def update_question_group(
     data: QuestionGroupUpdate,
     db: AsyncSession = Depends(get_db)
 ):
-    """鏇存柊闂鎰忓浘缁?""
+    """更新问题意图组"""
     result = await db.execute(select(QuestionGroup).where(QuestionGroup.id == group_id))
     group = result.scalar_one_or_none()
     if not group:
@@ -203,9 +203,9 @@ async def create_question(
     data: QuestionCreate,
     db: AsyncSession = Depends(get_db)
 ):
-    """鍦ㄦ剰鍥剧粍涓嬫坊鍔犻棶棰?""
+    """在意图组下添加问题"""
     if data.group_id and str(data.group_id) != str(group_id):
-        raise HTTPException(status_code=400, detail="璇锋眰浣撲腑鐨?group_id 涓庤矾寰勪腑鐨勯棶棰樼粍涓嶄竴鑷?)
+        raise HTTPException(status_code=400, detail="请求体中的 group_id 与路径中的问题组不一致")
 
     result = await db.execute(select(QuestionGroup).where(QuestionGroup.id == group_id))
     group = result.scalar_one_or_none()
@@ -252,7 +252,7 @@ async def list_questions(
     enabled: Optional[bool] = Query(None),
     db: AsyncSession = Depends(get_db)
 ):
-    """鑾峰彇闂鍒楄〃"""
+    """获取问题列表"""
     query = select(Question)
     filters = []
     if group_id:
@@ -275,7 +275,7 @@ async def update_question(
     data: QuestionUpdate,
     db: AsyncSession = Depends(get_db)
 ):
-    """鏇存柊闂"""
+    """更新问题"""
     result = await db.execute(
         select(Question)
         .where(Question.id == question_id)
@@ -310,7 +310,7 @@ async def delete_question(
     question_id: UUID,
     db: AsyncSession = Depends(get_db)
 ):
-    """鍒犻櫎闂"""
+    """删除问题"""
     result = await db.execute(
         select(Question)
         .where(Question.id == question_id)
