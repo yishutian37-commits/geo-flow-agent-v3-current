@@ -136,6 +136,16 @@ export const platformPoliciesApi = {
   check: (data) => api.post('/platform-policies/check', data),
 };
 
+// Question Archetypes API
+export const questionArchetypesApi = {
+  list: () => api.get('/question-archetypes'),
+  get: (industry) => api.get(`/question-archetypes/${industry}`),
+  update: (industry, data) => api.put(`/question-archetypes/${industry}`, data),
+  suggestions: (params) => api.get('/question-archetypes/learning/suggestions', { params }),
+  feedbacks: (params) => api.get('/question-archetypes/learning/feedbacks', { params }),
+  applySuggestion: (data) => api.post('/question-archetypes/learning/apply', data),
+};
+
 // Corpus Items API
 export const corpusItemsApi = {
   list: (params) => api.get('/corpus-items', { params }),
