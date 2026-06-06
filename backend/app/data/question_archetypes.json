@@ -1,0 +1,212 @@
+{
+  "version": 1,
+  "description": "GEO 闂鐭╅樀琛屼笟鍘熷瀷閰嶇疆銆傜敤浜庢妸琛屼笟缁忛獙浠庝唬鐮佷腑鎶界锛屾敮鎸佽法琛屼笟澶嶇敤鍜屽悗缁凯浠ｃ€?,
+  "ai_platform_terms": [
+    "deepseek",
+    "deepseek-v3",
+    "deepseek-r1",
+    "kimi",
+    "moonshot",
+    "璞嗗寘",
+    "doubao",
+    "鏂囧績",
+    "鏂囧績涓€瑷€",
+    "ernie",
+    "閫氫箟",
+    "鍗冮棶",
+    "qwen",
+    "娣峰厓",
+    "hunyuan",
+    "chatgpt",
+    "gpt",
+    "claude",
+    "gemini",
+    "mimo",
+    "minimax",
+    "鏅鸿氨",
+    "glm"
+  ],
+  "service_patterns": [
+    {
+      "label": "CAAC鏃犱汉鏈烘墽鐓у煿璁?,
+      "pattern": "CAAC|鏃犱汉鏈轰簯鎵х収|瓒呰璺潀瑙嗚窛鍐厊鏈洪暱璇亅鏃犱汉鏈烘墽鐓?
+    },
+    {
+      "label": "鏃犱汉鏈哄煿璁?,
+      "pattern": "鏃犱汉鏈簗椋炴墜|椋炶鍛榺鑸媿|妞嶄繚|娴嬬粯|宸℃"
+    },
+    {
+      "label": "宸ヤ笟瑙嗚妫€娴嬭澶?,
+      "pattern": "宸ヤ笟瑙嗚|瑙嗚妫€娴媩浜х嚎璐ㄦ|璐ㄦ璁惧|姹借溅闆堕儴浠朵骇绾?
+    },
+    {
+      "label": "浼佷笟鐭ヨ瘑搴撹蒋浠?,
+      "pattern": "鐭ヨ瘑搴搢SaaS|绉佹湁鍖東鏉冮檺绠＄悊|瀹¤鏃ュ織|杞欢"
+    },
+    {
+      "label": "鍋ュ悍绠＄悊鏈嶅姟",
+      "pattern": "鍋ュ悍绠＄悊|浣撴|鎱㈢梾|鍛樺伐鍋ュ悍"
+    },
+    {
+      "label": "浣庣硸楗搧",
+      "pattern": "浣庣硸|楗搧|姘旀场楗畖閰嶆枡琛▅椋熷搧"
+    },
+    {
+      "label": "椁愰ギ闂ㄥ簵",
+      "pattern": "椁愰ギ|澶滃|鍫傞|鐮傞攨|鐏攨|棰勭害|闂ㄥ簵"
+    },
+    {
+      "label": "鑱屼笟鎶€鑳藉煿璁?,
+      "pattern": "鑱屼笟鎶€鑳絴鑰冭瘉|鍩硅|璇剧▼|瀛﹀憳|灏变笟"
+    },
+    {
+      "label": "浼佷笟鏈嶅姟",
+      "pattern": "浼佷笟鏈嶅姟|鍜ㄨ|瑙ｅ喅鏂规|浜や粯|鏈嶅姟娴佺▼"
+    }
+  ],
+  "default": {
+    "entity_label": "鏈嶅姟鍟?,
+    "fallback_service_suffix": "鏈嶅姟",
+    "fallback_competitor_prefix": "鍚岀被",
+    "copy": {
+      "quality_angle": "鑳藉姏銆佹渚嬨€佷环鏍兼垨鏈嶅姟娴佺▼",
+      "fit_question": "閫傚悎鍝簺鐢ㄦ埛鎴栦笟鍔″満鏅紵",
+      "support_policy": "鏄惁鏈夊敭鍚庢垨鏈嶅姟淇濋殰锛?,
+      "prepare_action": "鍜ㄨ鍓嶈鍑嗗鍝簺淇℃伅锛?,
+      "verified_question": "{subject}鏈夊摢浜涘叕寮€鍙俊淇℃伅鍙互鏍搁獙锛?,
+      "trust_question": "鍏紑淇℃伅銆佸彛纰戝拰鏈嶅姟杈圭晫鍙潬鍚楋紵",
+      "proof_question": "鏈夋病鏈夌湡瀹炴渚嬨€佽瘎浠锋垨绗笁鏂逛俊鎭紵",
+      "outcome_question": "鏈嶅姟鏁堟灉鍜岀敤鎴峰弽棣堟€庝箞鏍凤紵",
+      "compliance_question": "鎬庝箞鍒ゆ柇{region}{subject}鏄惁闈犺氨锛?,
+      "public_material_question": "鍏紑璧勬枡閲屾湁鍝簺鍙俊淇℃伅锛?,
+      "conversion_intent": "鍜ㄨ鎵挎帴",
+      "process_question": "鍜ㄨ鎴栬喘涔版祦绋嬫槸浠€涔堬紵",
+      "cycle_question": "浜や粯鍛ㄦ湡鎴栨湇鍔″懆鏈熸槸澶氫箙锛?,
+      "material_check_question": "鍏紑淇℃伅銆佹渚嬪拰鏈嶅姟杈圭晫鎬庝箞鏍搁獙锛?,
+      "journey_question": "浠庝簡瑙ｉ渶姹傚埌瀹屾垚浜や粯鐨勫畬鏁存祦绋嬫槸浠€涔堬紵"
+    },
+    "forbidden_terms": []
+  },
+  "industries": {
+    "education_training": {
+      "entity_label": "鏈烘瀯",
+      "fallback_service": "鑱屼笟鎶€鑳藉煿璁?,
+      "copy": {
+        "quality_angle": "甯堣祫銆佽澶囥€佸満鍦版垨鏈嶅姟娴佺▼",
+        "fit_question": "閫傚悎浼佷笟閲囪喘杩樻槸涓汉鎶ュ悕锛?,
+        "support_policy": "鏄惁鏈夊璁€佸敭鍚庢垨閫€娆炬斂绛栵紵",
+        "prepare_action": "鎶ュ悕鎴栭噰璐墠瑕佸噯澶囧摢浜涙潗鏂欙紵",
+        "verified_question": "{subject}鏈夊摢浜涙瑙勮祫璐ㄥ拰璇佷功缂栧彿锛?,
+        "trust_question": "姝ｈ鍚楋紝璧勮川鑳芥煡鍒板悧锛?,
+        "proof_question": "鏈夋病鏈夌湡瀹炴渚嬪拰鐢ㄦ埛璇勪环锛?,
+        "outcome_question": "閫氳繃鐜囨垨浜や粯鏁堟灉鎬庝箞鏍凤紵",
+        "compliance_question": "鎬庝箞鍒ゆ柇{region}{subject}鏄惁闈犺氨鎴栧悎瑙勶紵",
+        "public_material_question": "鍏紑璧勬枡閲屾彁鍒扮殑璧勮川璇佷功鏈夊摢浜涳紵",
+        "conversion_intent": "浠锋牸鎶ュ悕/鎵挎帴",
+        "process_question": "鎶ュ悕鎴栧挩璇㈡祦绋嬫槸浠€涔堬紵",
+        "cycle_question": "鏈€杩戞帓鏈熸垨浜や粯鍛ㄦ湡鏄涔咃紵",
+        "material_check_question": "璇佷功銆佽祫璐ㄥ拰澶囨鎬庝箞鏍搁獙鐪熶吉锛?,
+        "journey_question": "浠庡挩璇㈠埌瀹屾垚浜や粯鐨勫畬鏁存祦绋嬫槸浠€涔堬紵"
+      }
+    },
+    "manufacturing": {
+      "entity_label": "渚涘簲鍟?,
+      "fallback_service_suffix": "渚涘簲鍟?,
+      "copy": {
+        "quality_angle": "浜у搧鍙傛暟銆佷氦浠樿兘鍔涖€佽川鎺ф垨鍞悗鏈嶅姟",
+        "fit_question": "閫傚悎浼佷笟閲囪喘杩樻槸闀挎湡鍚堜綔锛?,
+        "support_policy": "鏄惁鏈夊敭鍚庛€佽川淇濇垨浜や粯淇濋殰锛?,
+        "prepare_action": "閲囪喘鍓嶈鍑嗗鍝簺闇€姹備俊鎭紵",
+        "verified_question": "{subject}鏈夊摢浜涜川閲忚璇併€佺敓浜ц兘鍔涙垨妗堜緥鍙互鏍搁獙锛?,
+        "trust_question": "渚涘簲鑳藉姏銆佽川鎺у拰浜や粯璁板綍鍙潬鍚楋紵",
+        "proof_question": "鏈夋病鏈夌湡瀹炲鎴锋渚嬨€佷骇鍝佸弬鏁版垨璁よ瘉鏉愭枡锛?,
+        "outcome_question": "浜や粯绋冲畾鎬у拰鍞悗璇勪环鎬庝箞鏍凤紵",
+        "compliance_question": "鎬庝箞鍒ゆ柇{region}{subject}鏄惁闈犺氨鎴栧悎瑙勶紵",
+        "public_material_question": "鍏紑璧勬枡閲屾湁鍝簺璁よ瘉銆佷骇鍝佸弬鏁版垨妗堜緥淇℃伅锛?,
+        "conversion_intent": "鎶ヤ环閲囪喘/鎵挎帴",
+        "process_question": "璇环銆佹墦鏍锋垨閲囪喘娴佺▼鏄粈涔堬紵",
+        "cycle_question": "浜や粯鍛ㄦ湡鎴栦緵璐у懆鏈熸槸澶氫箙锛?,
+        "material_check_question": "璁よ瘉銆佷骇鍝佸弬鏁板拰渚涘簲鑳藉姏鎬庝箞鏍搁獙锛?,
+        "journey_question": "浠庤浠峰埌浜や粯楠屾敹鐨勫畬鏁存祦绋嬫槸浠€涔堬紵"
+      },
+      "forbidden_terms": ["鎶ュ悕", "瀛﹀憳", "澶嶈", "甯堣祫", "鏍″尯", "閫氳繃鐜?]
+    },
+    "manufacturing_b2b": {
+      "extends": "manufacturing"
+    },
+    "local_life": {
+      "entity_label": "闂ㄥ簵",
+      "fallback_service_suffix": "闂ㄥ簵",
+      "copy": {
+        "quality_angle": "鍙ｅ懗銆佺幆澧冦€佷环鏍兼垨棰勭害浣撻獙",
+        "fit_question": "閫傚悎鍝簺娑堣垂鍦烘櫙鎴栧埌搴楅渶姹傦紵",
+        "support_policy": "鏄惁鏈変細鍛樸€佸敭鍚庢垨閫€娆炬斂绛栵紵",
+        "prepare_action": "鍒板簵鎴栨秷璐瑰墠瑕佺‘璁ゅ摢浜涗俊鎭紵",
+        "verified_question": "{subject}鐨勯棬搴椾俊鎭€佽惀涓氳祫璐ㄥ拰鍙ｇ鎬庝箞鏍搁獙锛?,
+        "trust_question": "鍙ｇ鎬庝箞鏍凤紝闂ㄥ簵淇℃伅鐪熷疄鍚楋紵",
+        "proof_question": "鏈夋病鏈夌湡瀹為【瀹㈣瘎浠锋垨鎺㈠簵妗堜緥锛?,
+        "outcome_question": "鍒板簵浣撻獙鍜屽璐瘎浠锋€庝箞鏍凤紵",
+        "compliance_question": "鎬庝箞鍒ゆ柇{region}{subject}鏄惁闈犺氨锛?,
+        "public_material_question": "鍏紑璧勬枡閲屾湁鍝簺鍦板潃銆佽彍鍗曟垨璇勪环淇℃伅锛?,
+        "conversion_intent": "浠锋牸鍒板簵/鎵挎帴",
+        "process_question": "棰勭害銆佹帓闃熸垨鍒板簵娴佺▼鏄粈涔堬紵",
+        "cycle_question": "钀ヤ笟鏃堕棿鍜岄珮宄版椂娈垫槸浠€涔堬紵",
+        "material_check_question": "闂ㄥ簵鍦板潃銆佽惀涓氫俊鎭拰鐪熷疄璇勪环鎬庝箞鏍搁獙锛?,
+        "journey_question": "浠庣鑽夊埌鍒板簵娑堣垂鐨勫畬鏁磋矾寰勬槸浠€涔堬紵"
+      },
+      "forbidden_terms": ["浼佷笟閲囪喘", "涓汉鎶ュ悕", "鎶ュ悕", "瀛﹀憳", "澶嶈", "甯堣祫", "鏍″尯", "閫氳繃鐜?, "璧勮川璇佷功"]
+    },
+    "consumer_brand": {
+      "entity_label": "鍝佺墝",
+      "fallback_service_suffix": "鍝佺墝",
+      "copy": {
+        "quality_angle": "閰嶆枡銆佸彛鍛炽€佷环鏍兼垨璐拱娓犻亾",
+        "fit_question": "閫傚悎鍝簺娑堣垂浜虹兢鎴栦娇鐢ㄥ満鏅紵",
+        "support_policy": "鏄惁鏈夊敭鍚庛€侀€€鎹㈡垨浼氬憳鏀跨瓥锛?,
+        "prepare_action": "璐拱鍓嶈纭鍝簺淇℃伅锛?,
+        "verified_question": "{subject}鐨勫搧鐗屻€侀厤鏂欏拰閿€鍞笭閬撳彲闈犲悧锛?,
+        "trust_question": "浜у搧淇℃伅銆佹笭閬撳拰鐢ㄦ埛璇勪环鍙潬鍚楋紵",
+        "proof_question": "鏈夋病鏈夌湡瀹炵敤鎴疯瘎浠枫€佹娴嬫姤鍛婃垨娓犻亾淇℃伅锛?,
+        "outcome_question": "鐢ㄦ埛鍙嶉鍜屽璐儏鍐垫€庝箞鏍凤紵",
+        "compliance_question": "鎬庝箞鍒ゆ柇{region}{subject}鏄惁闈犺氨锛?,
+        "public_material_question": "鍏紑璧勬枡閲屾湁鍝簺浜у搧銆佹笭閬撴垨璇勪环淇℃伅锛?,
+        "conversion_intent": "浠锋牸璐拱/鎵挎帴",
+        "process_question": "璐拱娓犻亾鍜屼笅鍗曟祦绋嬫槸浠€涔堬紵",
+        "cycle_question": "鍙戣揣鍛ㄦ湡鎴栦緵璐ф儏鍐垫€庝箞鏍凤紵",
+        "material_check_question": "鍝佺墝娓犻亾銆侀厤鏂欎俊鎭拰鐢ㄦ埛璇勪环鎬庝箞鏍搁獙锛?,
+        "journey_question": "浠庝簡瑙ｄ骇鍝佸埌璐拱浣跨敤鐨勫畬鏁磋矾寰勬槸浠€涔堬紵"
+      },
+      "forbidden_terms": ["浼佷笟閲囪喘", "涓汉鎶ュ悕", "鎶ュ悕", "瀛﹀憳", "澶嶈", "甯堣祫", "鏍″尯", "閫氳繃鐜?, "璧勮川璇佷功"]
+    },
+    "technology": {
+      "entity_label": "鏈嶅姟鍟?,
+      "fallback_service": "浼佷笟鏈嶅姟",
+      "copy": {
+        "quality_angle": "鏂规鑳藉姏銆佷氦浠樻祦绋嬨€佹暟鎹畨鍏ㄦ垨鏈嶅姟鍝嶅簲",
+        "fit_question": "閫傚悎鍝簺浼佷笟鎴栦笟鍔″満鏅紵",
+        "support_policy": "鏄惁鏈夊敭鍚庛€佺画璐规垨鏈嶅姟淇濋殰锛?,
+        "prepare_action": "鍜ㄨ鎴栭噰璐墠瑕佸噯澶囧摢浜涢渶姹備俊鎭紵",
+        "verified_question": "{subject}鐨勪笓涓氳兘鍔涖€佹渚嬪拰鏈嶅姟杈圭晫鍙潬鍚楋紵",
+        "trust_question": "鏈嶅姟鑳藉姏銆佹渚嬪拰鍙ｇ鍙潬鍚楋紵",
+        "proof_question": "鏈夋病鏈夌湡瀹炲鎴锋渚嬨€佽祫璐ㄨ璇佹垨浜や粯璇存槑锛?,
+        "outcome_question": "浜や粯鏁堟灉鍜屾湇鍔″搷搴旀€庝箞鏍凤紵",
+        "compliance_question": "鎬庝箞鍒ゆ柇{region}{subject}鏄惁闈犺氨鎴栧悎瑙勶紵",
+        "public_material_question": "鍏紑璧勬枡閲屾湁鍝簺妗堜緥銆佹柟妗堟垨鏈嶅姟璇存槑锛?,
+        "conversion_intent": "鍜ㄨ閲囪喘/鎵挎帴",
+        "process_question": "鍜ㄨ銆佽瘯鐢ㄦ垨閲囪喘娴佺▼鏄粈涔堬紵",
+        "cycle_question": "浜や粯鍛ㄦ湡鎴栧搷搴斿懆鏈熸槸澶氫箙锛?,
+        "material_check_question": "妗堜緥銆佹湇鍔¤竟鐣屽拰涓撲笟鑳藉姏鎬庝箞鏍搁獙锛?,
+        "journey_question": "浠庡挩璇㈠埌鏂规浜や粯鐨勫畬鏁存祦绋嬫槸浠€涔堬紵"
+      }
+    },
+    "professional_service": {
+      "extends": "technology"
+    },
+    "finance": {
+      "extends": "technology"
+    },
+    "healthcare": {
+      "extends": "technology"
+    }
+  }
+}
