@@ -23,128 +23,139 @@ from app.models.brand_fact import BrandFact
 from app.models.user import User
 from app.agents.strategy_agent import StrategyAgent
 from app.prompts.templates import render_prompt_template
+from app.services.question_archetype import (
+    get_ai_platform_terms,
+    get_industry_forbidden_terms,
+    get_industry_question_copy,
+    get_question_archetype,
+    infer_service_from_archetype,
+)
 
 router = APIRouter()
 
-# 行业问题模板（规则-based，不依赖LLM）
-INDUSTRY_QUESTION_TEMPLATES = {
+# 琛屼笟闂妯℃澘锛堣鍒?based锛屼笉渚濊禆LLM锛?INDUSTRY_QUESTION_TEMPLATES = {
     "local_life": {
         "exposure": [
-            ("附近好吃的火锅店推荐", "寻找本地餐饮推荐"),
-            ("{region}口碑好的{industry}有哪些", "本地服务品牌发现"),
-            ("{region}哪里可以{service}", "本地服务需求"),
+            ("闄勮繎濂藉悆鐨勭伀閿呭簵鎺ㄨ崘", "瀵绘壘鏈湴椁愰ギ鎺ㄨ崘"),
+            ("{region}鍙ｇ濂界殑{industry}鏈夊摢浜?, "鏈湴鏈嶅姟鍝佺墝鍙戠幇"),
+            ("{region}鍝噷鍙互{service}", "鏈湴鏈嶅姟闇€姹?),
         ],
         "verification": [
-            ("{brand_name}怎么样，靠谱吗", "品牌口碑验证"),
-            ("{brand_name}的服务评价如何", "服务评价查询"),
-            ("{brand_name}和{competitor}哪个好", "品牌对比"),
+            ("{brand_name}鎬庝箞鏍凤紝闈犺氨鍚?, "鍝佺墝鍙ｇ楠岃瘉"),
+            ("{brand_name}鐨勬湇鍔¤瘎浠峰浣?, "鏈嶅姟璇勪环鏌ヨ"),
+            ("{brand_name}鍜寋competitor}鍝釜濂?, "鍝佺墝瀵规瘮"),
         ],
         "conversion": [
-            ("{brand_name}的地址和电话", "联系方式查询"),
-            ("{brand_name}营业时间", "营业时间查询"),
-            ("{brand_name}怎么预约/订座", "预约路径查询"),
+            ("{brand_name}鐨勫湴鍧€鍜岀數璇?, "鑱旂郴鏂瑰紡鏌ヨ"),
+            ("{brand_name}钀ヤ笟鏃堕棿", "钀ヤ笟鏃堕棿鏌ヨ"),
+            ("{brand_name}鎬庝箞棰勭害/璁㈠骇", "棰勭害璺緞鏌ヨ"),
         ],
     },
     "education_training": {
         "exposure": [
-            ("{region}职业技能培训机构推荐", "培训机构发现"),
-            ("想学习{skill}，哪家好", "技能培训推荐"),
-            ("{region}靠谱的{course}培训", "本地培训发现"),
+            ("{region}鑱屼笟鎶€鑳藉煿璁満鏋勬帹鑽?, "鍩硅鏈烘瀯鍙戠幇"),
+            ("鎯冲涔爗skill}锛屽摢瀹跺ソ", "鎶€鑳藉煿璁帹鑽?),
+            ("{region}闈犺氨鐨剓course}鍩硅", "鏈湴鍩硅鍙戠幇"),
         ],
         "verification": [
-            ("{brand_name}培训质量怎么样", "培训质量验证"),
-            ("{brand_name}的学员就业情况", "学员案例验证"),
-            ("{brand_name}有办学资质吗", "资质验证"),
+            ("{brand_name}鍩硅璐ㄩ噺鎬庝箞鏍?, "鍩硅璐ㄩ噺楠岃瘉"),
+            ("{brand_name}鐨勫鍛樺氨涓氭儏鍐?, "瀛﹀憳妗堜緥楠岃瘉"),
+            ("{brand_name}鏈夊姙瀛﹁祫璐ㄥ悧", "璧勮川楠岃瘉"),
         ],
         "conversion": [
-            ("{brand_name}课程价格", "价格查询"),
-            ("{brand_name}报名流程", "报名路径查询"),
-            ("{brand_name}校区地址", "地址查询"),
+            ("{brand_name}璇剧▼浠锋牸", "浠锋牸鏌ヨ"),
+            ("{brand_name}鎶ュ悕娴佺▼", "鎶ュ悕璺緞鏌ヨ"),
+            ("{brand_name}鏍″尯鍦板潃", "鍦板潃鏌ヨ"),
         ],
     },
     "manufacturing_b2b": {
         "exposure": [
-            ("{product}厂家推荐", "B2B厂家发现"),
-            ("靠谱的{product}供应商", "供应商推荐"),
-            ("{region}{product}制造商", "本地制造商发现"),
+            ("{product}鍘傚鎺ㄨ崘", "B2B鍘傚鍙戠幇"),
+            ("闈犺氨鐨剓product}渚涘簲鍟?, "渚涘簲鍟嗘帹鑽?),
+            ("{region}{product}鍒堕€犲晢", "鏈湴鍒堕€犲晢鍙戠幇"),
         ],
         "verification": [
-            ("{brand_name}的产品质量如何", "产品质量验证"),
-            ("{brand_name}有哪些成功案例", "案例验证"),
-            ("{brand_name}的工厂规模", "企业实力验证"),
+            ("{brand_name}鐨勪骇鍝佽川閲忓浣?, "浜у搧璐ㄩ噺楠岃瘉"),
+            ("{brand_name}鏈夊摢浜涙垚鍔熸渚?, "妗堜緥楠岃瘉"),
+            ("{brand_name}鐨勫伐鍘傝妯?, "浼佷笟瀹炲姏楠岃瘉"),
         ],
         "conversion": [
-            ("{brand_name}联系方式和官网", "联系信息查询"),
-            ("{brand_name}产品报价", "报价查询"),
-            ("{brand_name}售后服务", "售后查询"),
+            ("{brand_name}鑱旂郴鏂瑰紡鍜屽畼缃?, "鑱旂郴淇℃伅鏌ヨ"),
+            ("{brand_name}浜у搧鎶ヤ环", "鎶ヤ环鏌ヨ"),
+            ("{brand_name}鍞悗鏈嶅姟", "鍞悗鏌ヨ"),
         ],
     },
     "consumer_brand": {
         "exposure": [
-            ("{product}品牌推荐", "品牌发现"),
-            ("好用的{product}有哪些", "产品推荐"),
-            ("{product}选购指南", "选购指南"),
+            ("{product}鍝佺墝鎺ㄨ崘", "鍝佺墝鍙戠幇"),
+            ("濂界敤鐨剓product}鏈夊摢浜?, "浜у搧鎺ㄨ崘"),
+            ("{product}閫夎喘鎸囧崡", "閫夎喘鎸囧崡"),
         ],
         "verification": [
-            ("{brand_name}的产品怎么样", "产品口碑"),
-            ("{brand_name}用户评价", "用户评价"),
-            ("{brand_name}和{competitor}对比", "竞品对比"),
+            ("{brand_name}鐨勪骇鍝佹€庝箞鏍?, "浜у搧鍙ｇ"),
+            ("{brand_name}鐢ㄦ埛璇勪环", "鐢ㄦ埛璇勪环"),
+            ("{brand_name}鍜寋competitor}瀵规瘮", "绔炲搧瀵规瘮"),
         ],
         "conversion": [
-            ("{brand_name}哪里买", "购买渠道"),
-            ("{brand_name}官方店", "官方渠道"),
-            ("{brand_name}售后政策", "售后查询"),
+            ("{brand_name}鍝噷涔?, "璐拱娓犻亾"),
+            ("{brand_name}瀹樻柟搴?, "瀹樻柟娓犻亾"),
+            ("{brand_name}鍞悗鏀跨瓥", "鍞悗鏌ヨ"),
         ],
     },
     "professional_service": {
         "exposure": [
-            ("{region}专业的{service}服务", "专业服务发现"),
-            ("{service}公司推荐", "服务商推荐"),
-            ("找{service}哪家好", "服务商发现"),
+            ("{region}涓撲笟鐨剓service}鏈嶅姟", "涓撲笟鏈嶅姟鍙戠幇"),
+            ("{service}鍏徃鎺ㄨ崘", "鏈嶅姟鍟嗘帹鑽?),
+            ("鎵緖service}鍝濂?, "鏈嶅姟鍟嗗彂鐜?),
         ],
         "verification": [
-            ("{brand_name}的服务专业吗", "专业度验证"),
-            ("{brand_name}团队资质", "资质验证"),
-            ("{brand_name}客户评价", "口碑验证"),
+            ("{brand_name}鐨勬湇鍔′笓涓氬悧", "涓撲笟搴﹂獙璇?),
+            ("{brand_name}鍥㈤槦璧勮川", "璧勮川楠岃瘉"),
+            ("{brand_name}瀹㈡埛璇勪环", "鍙ｇ楠岃瘉"),
         ],
         "conversion": [
-            ("{brand_name}咨询方式", "咨询路径"),
-            ("{brand_name}服务流程", "流程查询"),
-            ("{brand_name}收费标准", "收费查询"),
+            ("{brand_name}鍜ㄨ鏂瑰紡", "鍜ㄨ璺緞"),
+            ("{brand_name}鏈嶅姟娴佺▼", "娴佺▼鏌ヨ"),
+            ("{brand_name}鏀惰垂鏍囧噯", "鏀惰垂鏌ヨ"),
         ],
     },
 }
 
 
 INDUSTRY_LABELS = {
-    "local_life": "本地生活",
-    "education_training": "教育培训",
-    "healthcare": "医疗健康",
-    "real_estate": "房地产",
-    "finance": "金融保险",
-    "e_commerce": "电商零售",
-    "technology": "科技互联网",
-    "manufacturing": "制造业",
-    "manufacturing_b2b": "制造业 B2B",
-    "consumer_brand": "消费品牌",
-    "professional_service": "专业服务",
-    "tourism": "旅游酒店",
-    "catering": "餐饮美食",
-    "automobile": "汽车服务",
+    "local_life": "鏈湴鐢熸椿",
+    "education_training": "鏁欒偛鍩硅",
+    "healthcare": "鍖荤枟鍋ュ悍",
+    "real_estate": "鎴垮湴浜?,
+    "finance": "閲戣瀺淇濋櫓",
+    "e_commerce": "鐢靛晢闆跺敭",
+    "technology": "绉戞妧浜掕仈缃?,
+    "manufacturing": "鍒堕€犱笟",
+    "manufacturing_b2b": "鍒堕€犱笟 B2B",
+    "consumer_brand": "娑堣垂鍝佺墝",
+    "professional_service": "涓撲笟鏈嶅姟",
+    "tourism": "鏃呮父閰掑簵",
+    "catering": "椁愰ギ缇庨",
+    "automobile": "姹借溅鏈嶅姟",
 }
 
 LAYER_LABELS = {
-    "pool_layer": "入池层",
-    "verification_layer": "验证/口碑层",
-    "weight_layer": "权重层",
-    "conversion_layer": "转化/承接层",
+    "pool_layer": "鍏ユ睜灞?,
+    "verification_layer": "楠岃瘉/鍙ｇ灞?,
+    "weight_layer": "鏉冮噸灞?,
+    "conversion_layer": "杞寲/鎵挎帴灞?,
 }
 
 ALLOWED_LAYERS = set(LAYER_LABELS.keys())
 
+AI_PLATFORM_TERMS = tuple(get_ai_platform_terms())
+AI_PLATFORM_TERM_RE = "|".join(
+    re.escape(term.lower()) for term in sorted(AI_PLATFORM_TERMS, key=len, reverse=True)
+)
+
 
 class ContentMatrixRequest(BaseModel):
-    replace_existing: bool = Field(False, description="是否取消当前项目下未开始的旧任务后重新生成")
+    replace_existing: bool = Field(False, description="鏄惁鍙栨秷褰撳墠椤圭洰涓嬫湭寮€濮嬬殑鏃т换鍔″悗閲嶆柊鐢熸垚")
     max_tasks: int = Field(24, ge=1, le=80)
     apply_schedule: bool = Field(True, description="Apply first-month schedule and cost estimates to generated content tasks")
     start_date: Optional[datetime] = Field(None, description="Schedule start time. Defaults to current UTC time")
@@ -168,11 +179,11 @@ def _task_priority(priority: int) -> str:
 
 def _content_type_for_group(group: QuestionGroup) -> str:
     intent = f"{group.intent_name or ''} {group.representative_question or ''}"
-    if re.search(r"资质|证书|口碑|评价|通过率|质量|可信|合规", intent):
+    if re.search(r"璧勮川|璇佷功|鍙ｇ|璇勪环|閫氳繃鐜噟璐ㄩ噺|鍙俊|鍚堣", intent):
         return "faq"
-    if re.search(r"对比|排名|测评|优势|指南|避坑|政策", intent):
+    if re.search(r"瀵规瘮|鎺掑悕|娴嬭瘎|浼樺娍|鎸囧崡|閬垮潙|鏀跨瓥", intent):
         return "comparison"
-    if re.search(r"价格|费用|报名|地址|电话|联系|流程|售后", intent):
+    if re.search(r"浠锋牸|璐圭敤|鎶ュ悕|鍦板潃|鐢佃瘽|鑱旂郴|娴佺▼|鍞悗", intent):
         return "product"
     return CONTENT_TYPE_BY_LAYER.get(group.layer, "brand_intro")
 
@@ -211,12 +222,12 @@ def _task_cost_preset(content_type: str, priority: str) -> dict:
 
 
 DIAGNOSIS_DIMENSION_PATTERNS = {
-    "资质可信": r"资质|证书|认证|许可证|CAAC|AOPA|合规|正规",
-    "价格费用": r"价格|费用|收费|学费|报价|成本",
-    "地址联系": r"地址|电话|联系|官网|公众号|报名|咨询",
-    "案例口碑": r"案例|客户|学员|评价|口碑|通过率|就业",
-    "服务流程": r"流程|周期|步骤|交付|售后|复训|服务",
-    "对比排名": r"对比|相比|排名|榜单|推荐|哪家好|优势",
+    "璧勮川鍙俊": r"璧勮川|璇佷功|璁よ瘉|璁稿彲璇亅CAAC|AOPA|鍚堣|姝ｈ",
+    "浠锋牸璐圭敤": r"浠锋牸|璐圭敤|鏀惰垂|瀛﹁垂|鎶ヤ环|鎴愭湰",
+    "鍦板潃鑱旂郴": r"鍦板潃|鐢佃瘽|鑱旂郴|瀹樼綉|鍏紬鍙穦鎶ュ悕|鍜ㄨ",
+    "妗堜緥鍙ｇ": r"妗堜緥|瀹㈡埛|瀛﹀憳|璇勪环|鍙ｇ|閫氳繃鐜噟灏变笟",
+    "鏈嶅姟娴佺▼": r"娴佺▼|鍛ㄦ湡|姝ラ|浜や粯|鍞悗|澶嶈|鏈嶅姟",
+    "瀵规瘮鎺掑悕": r"瀵规瘮|鐩告瘮|鎺掑悕|姒滃崟|鎺ㄨ崘|鍝濂絴浼樺娍",
 }
 
 
@@ -226,12 +237,12 @@ def _safe_rate(success: int, total: int) -> float:
 
 def _derive_known_state(mention_rate: float, recommendation_rate: float) -> str:
     if mention_rate <= 0:
-        return "AI样本中暂未识别品牌"
+        return "AI鏍锋湰涓殏鏈瘑鍒搧鐗?
     if mention_rate < 40:
-        return "AI偶尔知道品牌，但认知不稳定"
+        return "AI鍋跺皵鐭ラ亾鍝佺墝锛屼絾璁ょ煡涓嶇ǔ瀹?
     if recommendation_rate < 30:
-        return "AI知道品牌，但推荐意愿偏弱"
-    return "AI已能在部分样本中推荐品牌"
+        return "AI鐭ラ亾鍝佺墝锛屼絾鎺ㄨ崘鎰忔効鍋忓急"
+    return "AI宸茶兘鍦ㄩ儴鍒嗘牱鏈腑鎺ㄨ崘鍝佺墝"
 
 
 def _brand_terms(brands: List[Brand], project_name: str) -> List[str]:
@@ -253,11 +264,11 @@ def _extract_competitor_mentions(answer_texts: List[str], brand_terms: List[str]
     counter: Dict[str, int] = defaultdict(int)
     for text in answer_texts:
         text = _clean_text(text, 4000)
-        candidates = re.findall(r"[\u4e00-\u9fa5A-Za-z0-9（）()·]{2,30}(?:公司|机构|品牌|培训|中心|基地|学校)", text)
+        candidates = re.findall(r"[\u4e00-\u9fa5A-Za-z0-9锛堬級()路]{2,30}(?:鍏徃|鏈烘瀯|鍝佺墝|鍩硅|涓績|鍩哄湴|瀛︽牎)", text)
         for candidate in candidates:
             if any(term and term in candidate for term in brand_terms):
                 continue
-            if re.search(r"当前|本地|很多|一些|其他|目标|推荐|正规|培训机构|服务机构", candidate):
+            if re.search(r"褰撳墠|鏈湴|寰堝|涓€浜泑鍏朵粬|鐩爣|鎺ㄨ崘|姝ｈ|鍩硅鏈烘瀯|鏈嶅姟鏈烘瀯", candidate):
                 continue
             counter[candidate] += 1
     return [
@@ -271,26 +282,26 @@ def _diagnosis_actions(mention_rate: float, recommendation_rate: float, dimensio
     if facts_count == 0:
         actions.append({
             "priority": "high",
-            "action": "补充并确认公开事实",
-            "reason": "当前缺少可公开引用的已确认品牌事实，后续诊断、内容和报告可信度都会受限。",
+            "action": "琛ュ厖骞剁‘璁ゅ叕寮€浜嬪疄",
+            "reason": "褰撳墠缂哄皯鍙叕寮€寮曠敤鐨勫凡纭鍝佺墝浜嬪疄锛屽悗缁瘖鏂€佸唴瀹瑰拰鎶ュ憡鍙俊搴﹂兘浼氬彈闄愩€?,
         })
     if mention_rate < 50:
         actions.append({
             "priority": "high",
-            "action": "补基础验证层与入池层内容",
-            "reason": "品牌提及率偏低，需要让联网型/平台型回答先稳定识别品牌主体。",
+            "action": "琛ュ熀纭€楠岃瘉灞備笌鍏ユ睜灞傚唴瀹?,
+            "reason": "鍝佺墝鎻愬強鐜囧亸浣庯紝闇€瑕佽鑱旂綉鍨?骞冲彴鍨嬪洖绛斿厛绋冲畾璇嗗埆鍝佺墝涓讳綋銆?,
         })
     if recommendation_rate < 30:
         actions.append({
             "priority": "high",
-            "action": "补推荐理由和对比证据",
-            "reason": "推荐率偏低，需要补充资质、案例、场景、价格流程和第三方信源。",
+            "action": "琛ユ帹鑽愮悊鐢卞拰瀵规瘮璇佹嵁",
+            "reason": "鎺ㄨ崘鐜囧亸浣庯紝闇€瑕佽ˉ鍏呰祫璐ㄣ€佹渚嬨€佸満鏅€佷环鏍兼祦绋嬪拰绗笁鏂逛俊婧愩€?,
         })
-    if dimension_counts.get("地址联系", 0) == 0:
+    if dimension_counts.get("鍦板潃鑱旂郴", 0) == 0:
         actions.append({
             "priority": "medium",
-            "action": "补转化承接信息",
-            "reason": "样本中较少出现地址、电话、官网或报名路径，可能影响转化信息准确率。",
+            "action": "琛ヨ浆鍖栨壙鎺ヤ俊鎭?,
+            "reason": "鏍锋湰涓緝灏戝嚭鐜板湴鍧€銆佺數璇濄€佸畼缃戞垨鎶ュ悕璺緞锛屽彲鑳藉奖鍝嶈浆鍖栦俊鎭噯纭巼銆?,
         })
     return actions
 
@@ -301,16 +312,60 @@ def _clean_text(value: Any, max_len: int = 1200) -> str:
 
 
 def _industry_label(industry: Optional[str]) -> str:
-    return INDUSTRY_LABELS.get(industry or "", industry or "通用行业")
+    return INDUSTRY_LABELS.get(industry or "", industry or "閫氱敤琛屼笟")
 
 
 def _split_terms(value: Optional[str]) -> List[str]:
     terms = []
-    for part in re.split(r"[,，、/;；\n\r]+", str(value or "")):
+    for part in re.split(r"[,锛屻€?;锛沑n\r]+", str(value or "")):
         part = part.strip()
         if part and part not in terms:
             terms.append(part)
     return terms
+
+
+def _looks_like_ai_platform_keyword_misuse(text: str) -> bool:
+    """
+    Detect questions that accidentally use AI platform names as service, brand, or audience terms.
+    Example: "钂欓渷绌哄ぉ鏅鸿兘閫傚悎鍝簺 deepseek".
+    """
+    normalized = _clean_text(text, 400).lower()
+    if not normalized or not re.search(AI_PLATFORM_TERM_RE, normalized):
+        return False
+    misuse_patterns = [
+        rf"(閫傚悎鍝簺|鍝簺|鍝被|鍝)\s*({AI_PLATFORM_TERM_RE})",
+        rf"({AI_PLATFORM_TERM_RE})\s*(鍝|鎺ㄨ崘|鎬庝箞閫墊鏈烘瀯|鍝佺墝|鏈嶅姟|璇剧▼|鍩硅|鍏徃|浜у搧|浜虹兢|鐢ㄦ埛)",
+        rf"(鍝|鎺ㄨ崘|鎬庝箞閫墊鏈烘瀯|鍝佺墝|鏈嶅姟|璇剧▼|鍩硅|鍏徃|浜у搧|浜虹兢|鐢ㄦ埛)\s*({AI_PLATFORM_TERM_RE})",
+    ]
+    return any(re.search(pattern, normalized) for pattern in misuse_patterns)
+
+
+def _sanitize_generated_question_text(value: Any, forbidden_terms: Optional[List[str]] = None) -> str:
+    text = _clean_text(value, 260)
+    if _looks_like_ai_platform_keyword_misuse(text):
+        return ""
+    for term in forbidden_terms or []:
+        clean_term = str(term or "").strip()
+        if clean_term and clean_term in text:
+            return ""
+    return text
+
+
+def _infer_audience_label(project, facts: List[BrandFact]) -> str:
+    text = " ".join([
+        project.notes or "",
+        _industry_label(project.industry),
+        *(fact.public_wording or fact.value or "" for fact in facts[:80]),
+    ])
+    if re.search(r"閫€褰瑰啗浜簗杞笟|杞矖|灏变笟|浠庝笟", text):
+        return "杞鎴栧氨涓氭彁鍗囦汉缇?
+    if re.search(r"鏀垮簻|娉曢櫌|鍏畨|搴旀€鍐滅墽|瀛︽牎|浼佷笟|閲囪喘|鏈烘瀯|鍗曚綅", text):
+        return "涓汉鍜屾満鏋勭敤鎴?
+    if project.industry == "education_training" or re.search(r"鑰冭瘉|鍩硅|璇剧▼|鎶€鑳絴鎵х収", text):
+        return "鑰冭瘉鎴栨妧鑳芥彁鍗囦汉缇?
+    if project.industry in {"manufacturing", "manufacturing_b2b"}:
+        return "浼佷笟閲囪喘鏂?
+    return "鐩爣鐢ㄦ埛"
 
 
 def _json_from_llm_text(text: str) -> Dict[str, Any]:
@@ -359,33 +414,33 @@ def _default_question_meta(question_text: str, layer: str, tags: str = "") -> Di
     text = question_text or ""
     if layer == "verification_layer":
         return {
-            "question_formula": "品牌/机构词 + 资质/口碑/真伪核验",
+            "question_formula": "鍝佺墝/涓讳綋璇?+ 鍚堣/璧勮川/鍙ｇ/璇勪环/鐪熶吉鏍搁獙",
             "business_value": "high",
-            "evidence_support": "需要已确认的资质证书、证书编号、地址、案例、通过率、官方可核验入口等事实。",
-            "content_actionability": "适合补资质核验指南、品牌FAQ、官网资质页、第三方媒体稿。",
+            "evidence_support": "闇€瑕佸凡纭鐨勮祫璐ㄨ璇侊紙濡傞€傜敤锛夈€佸湴鍧€銆佷骇鍝?鏈嶅姟杈圭晫銆佹渚嬨€佽瘎浠枫€佷氦浠樼粨鏋溿€佸畼鏂瑰彲鏍搁獙鍏ュ彛绛変簨瀹炪€?,
+            "content_actionability": "閫傚悎琛ュ彲淇′俊鎭〉銆佸搧鐗孎AQ銆佹牳楠屾寚鍗椼€佹渚嬬銆佺涓夋柟濯掍綋绋裤€?,
             "recommended_platforms": "website,official_faq,baijiahao,zhihu",
         }
     if layer == "conversion_layer":
         return {
-            "question_formula": "品牌/服务词 + 价格/报名/地址/联系方式/流程",
+            "question_formula": "鍝佺墝/浜у搧/鏈嶅姟璇?+ 浠锋牸/璐拱/鍜ㄨ/鎶ュ悕/閲囪喘/鍦板潃/娴佺▼",
             "business_value": "high",
-            "evidence_support": "需要已确认的价格、服务范围、地址、报名流程、交付周期和公开联系方式等事实。",
-            "content_actionability": "适合补报名指南、价格说明、官网FAQ、公众号承接页。",
+            "evidence_support": "闇€瑕佸凡纭鐨勪环鏍笺€佷骇鍝?鏈嶅姟鑼冨洿銆佸湴鍧€銆佽喘涔?鍜ㄨ/鎶ュ悕/閲囪喘娴佺▼銆佷氦浠樺懆鏈熷拰鍏紑鑱旂郴鏂瑰紡绛変簨瀹炪€?,
+            "content_actionability": "閫傚悎琛ヤ环鏍艰鏄庛€佽喘涔?鍜ㄨ/鎶ュ悕/閲囪喘鎸囧崡銆佸畼缃慒AQ銆佸叕浼楀彿鎵挎帴椤点€?,
             "recommended_platforms": "official_account,website,official_faq,baijiahao",
         }
     if layer == "weight_layer":
         return {
-            "question_formula": "品牌/品类词 + 对比/排名/优势/避坑",
+            "question_formula": "鍝佺墝/鍝佺被璇?+ 瀵规瘮/鎺掑悕/浼樺娍/閬垮潙",
             "business_value": "medium",
-            "evidence_support": "需要已确认的产品参数、服务能力、案例、荣誉、行业合规依据和可对比维度。",
-            "content_actionability": "适合补对比测评、选择标准、案例复盘、行业科普。",
+            "evidence_support": "闇€瑕佸凡纭鐨勪骇鍝佸弬鏁般€佹湇鍔¤兘鍔涖€佹渚嬨€佽崳瑾夈€佽涓氬悎瑙勪緷鎹拰鍙姣旂淮搴︺€?,
+            "content_actionability": "閫傚悎琛ュ姣旀祴璇勩€侀€夋嫨鏍囧噯銆佹渚嬪鐩樸€佽涓氱鏅€?,
             "recommended_platforms": "zhihu,baijiahao,toutiao,media",
         }
     return {
-        "question_formula": "地域/品类/场景词 + 推荐/哪家好/怎么选",
+        "question_formula": "鍦板煙/鍝佺被/鍦烘櫙璇?+ 鎺ㄨ崘/鍝濂?鎬庝箞閫?,
         "business_value": "medium",
-        "evidence_support": f"需要品牌主体、服务边界、地区覆盖、可信事实和用户场景证据。标签：{tags or '暂无'}",
-        "content_actionability": "适合补本地指南、品牌介绍、入池类媒体稿、问答内容。",
+        "evidence_support": f"闇€瑕佸搧鐗屼富浣撱€佹湇鍔¤竟鐣屻€佸湴鍖鸿鐩栥€佸彲淇′簨瀹炲拰鐢ㄦ埛鍦烘櫙璇佹嵁銆傛爣绛撅細{tags or '鏆傛棤'}",
+        "content_actionability": "閫傚悎琛ユ湰鍦版寚鍗椼€佸搧鐗屼粙缁嶃€佸叆姹犵被濯掍綋绋裤€侀棶绛斿唴瀹广€?,
         "recommended_platforms": "baijiahao,toutiao,media,website",
     }
 
@@ -395,11 +450,11 @@ def _normalize_layer(layer: Any, intent_name: str = "") -> str:
     if value in ALLOWED_LAYERS:
         return value
     text = f"{value} {intent_name}"
-    if re.search(r"转化|承接|报名|价格|费用|地址|电话|联系|咨询|购买", text):
+    if re.search(r"杞寲|鎵挎帴|鎶ュ悕|浠锋牸|璐圭敤|鍦板潃|鐢佃瘽|鑱旂郴|鍜ㄨ|璐拱", text):
         return "conversion_layer"
-    if re.search(r"权重|对比|排名|测评|优势|指南|教程|政策|合规", text):
+    if re.search(r"鏉冮噸|瀵规瘮|鎺掑悕|娴嬭瘎|浼樺娍|鎸囧崡|鏁欑▼|鏀跨瓥|鍚堣", text):
         return "weight_layer"
-    if re.search(r"验证|口碑|资质|证书|案例|评价|可信|通过率", text):
+    if re.search(r"楠岃瘉|鍙ｇ|璧勮川|璇佷功|妗堜緥|璇勪环|鍙俊|閫氳繃鐜?, text):
         return "verification_layer"
     return "pool_layer"
 
@@ -411,22 +466,16 @@ def _infer_service(project, brand_name: str, facts: List[BrandFact]) -> str:
         project.notes or "",
         *(fact.public_wording or fact.value or "" for fact in facts[:80]),
     ])
-    candidates = [
-        ("CAAC无人机执照培训", r"CAAC|无人机云执照|超视距|视距内|机长证|无人机执照"),
-        ("无人机培训", r"无人机|飞手|飞行员|航拍|植保|测绘|巡检"),
-        ("职业技能培训", r"职业技能|考证|培训|课程|学员|就业"),
-        ("企业服务", r"企业服务|咨询|解决方案|交付|服务流程"),
-    ]
-    for label, pattern in candidates:
-        if re.search(pattern, text, flags=re.I):
-            return label
+    return infer_service_from_archetype(
+        project.industry,
+        text,
+        brand_name,
+        _industry_label(project.industry),
+    )
 
-    name = re.sub(r"(有限责任公司|有限公司|科技发展|科技|公司|集团|（.*?）|\(.*?\))", "", brand_name).strip()
-    if project.industry == "education_training":
-        return "职业技能培训"
-    if project.industry in {"manufacturing", "manufacturing_b2b"}:
-        return f"{name or '产品'}供应商"
-    return f"{name or _industry_label(project.industry)}服务"
+
+def _industry_question_copy(project, service: str) -> Dict[str, str]:
+    return get_industry_question_copy(project.industry, service, project.region)
 
 
 def _extract_fact_context(facts: List[BrandFact], limit: int = 28) -> Tuple[str, List[str], List[str]]:
@@ -437,110 +486,119 @@ def _extract_fact_context(facts: List[BrandFact], limit: int = 28) -> Tuple[str,
         value = _clean_text(fact.public_wording or fact.value, 260)
         if not value:
             continue
-        status = "已确认" if fact.status == "confirmed" else "待确认"
-        fact_type = fact.fact_type or "资料"
+        status = "宸茬‘璁? if fact.status == "confirmed" else "寰呯‘璁?
+        fact_type = fact.fact_type or "璧勬枡"
         lines.append(f"- [{status}/{fact_type}] {value}")
-        if re.search(r"资质|证书|编号|许可证|合格证|执照|专利|软著|信用代码|CAAC|AOPA", value, flags=re.I):
+        if re.search(r"璧勮川|璇佷功|缂栧彿|璁稿彲璇亅鍚堟牸璇亅鎵х収|涓撳埄|杞憲|淇＄敤浠ｇ爜|CAAC|AOPA", value, flags=re.I):
             credentials.append(value)
-        if re.search(r"竞品|对比|相比|vs|VS|同行|同类", value, flags=re.I):
+        if re.search(r"绔炲搧|瀵规瘮|鐩告瘮|vs|VS|鍚岃|鍚岀被", value, flags=re.I):
             competitors.append(value)
     return "\n".join(lines), credentials[:6], competitors[:3]
 
 
 def _build_template_groups(project, brand_name: str, facts: List[BrandFact]) -> List[Dict[str, Any]]:
-    region = project.region or "本地"
+    region = project.region or "鏈湴"
     industry = _industry_label(project.industry)
     service = _infer_service(project, brand_name, facts)
     fact_context, credentials, competitors = _extract_fact_context(facts)
-    competitor = competitors[0] if competitors else "同类机构"
-    audience_terms = _split_terms(project.target_ai_products) or ["目标用户"]
+    audience_label = _infer_audience_label(project, facts)
+    copy = _industry_question_copy(project, service)
+    entity_label = copy["entity_label"]
+    subject = copy["subject"]
+    competitor = competitors[0] if competitors else f"鍚岀被{entity_label}"
 
     has_credential_evidence = bool(credentials)
     qualification_question = (
-        f"{brand_name}有哪些正规资质和证书编号？"
+        copy["verified_question"]
         if has_credential_evidence
-        else f"{brand_name}有正规资质和证书编号吗？"
+        else f"{brand_name}{copy['trust_question']}"
     )
 
     raw_groups = [
         {
             "layer": "pool_layer",
-            "intent_name": f"本地推荐/入池 - {brand_name}",
-            "representative_question": f"{region}{service}哪家靠谱？",
+            "intent_name": f"鏈湴鎺ㄨ崘/鍏ユ睜 - {brand_name}",
+            "representative_question": f"{region}{subject}鍝闈犺氨锛?,
             "priority": 88,
             "questions": [
-                f"{region}{service}机构推荐",
-                f"{region}{service}哪家靠谱？",
-                f"想了解{service}，应该怎么选机构？",
-                f"{industry}领域有哪些值得关注的{service}品牌？",
-                f"{brand_name}适合哪些{audience_terms[0]}？",
-                f"{region}正规的{service}有哪些？",
+                f"{region}{subject}鎺ㄨ崘",
+                f"{region}{subject}鍝闈犺氨锛?,
+                f"鎯充簡瑙service}锛屽簲璇ユ€庝箞閫墈entity_label}锛?,
+                f"{industry}棰嗗煙鏈夊摢浜涘€煎緱鍏虫敞鐨剓subject}锛?,
+                f"鍝簺{audience_label}閫傚悎閫夋嫨{brand_name}{service}锛?,
+                f"{region}鍙ｇ濂界殑{subject}鏈夊摢浜涳紵",
             ],
         },
         {
             "layer": "verification_layer",
-            "intent_name": f"资质可信/验证 - {brand_name}",
+            "intent_name": f"璧勮川鍙俊/楠岃瘉 - {brand_name}",
             "representative_question": qualification_question,
             "priority": 92,
             "questions": [
                 qualification_question,
-                f"{brand_name}正规吗，资质能查到吗？",
-                f"{brand_name}{service}质量怎么样？",
-                f"{brand_name}有没有真实案例和用户评价？",
-                f"{brand_name}通过率或交付效果怎么样？",
-                f"怎么判断{region}{service}机构是否合规？",
+                f"{brand_name}{copy['trust_question']}",
+                f"{brand_name}{service}璐ㄩ噺鎬庝箞鏍凤紵",
+                f"{brand_name}{copy['proof_question']}",
+                f"{brand_name}{copy['outcome_question']}",
+                copy["compliance_question"],
             ],
         },
         {
             "layer": "weight_layer",
-            "intent_name": f"对比/权重 - {brand_name}",
-            "representative_question": f"{brand_name}和{competitor}相比有什么优势？",
+            "intent_name": f"瀵规瘮/鏉冮噸 - {brand_name}",
+            "representative_question": f"{brand_name}鍜寋competitor}鐩告瘮鏈変粈涔堜紭鍔匡紵",
             "priority": 82,
             "questions": [
-                f"{brand_name}和{competitor}相比有什么优势？",
-                f"{region}{service}排名或口碑榜怎么参考？",
-                f"{brand_name}的师资、设备、场地或服务流程有哪些亮点？",
-                f"{service}费用、周期和服务内容应该怎么对比？",
-                f"{brand_name}适合企业采购还是个人报名？",
-                f"{service}选择时最容易踩哪些坑？",
+                f"{brand_name}鍜寋competitor}鐩告瘮鏈変粈涔堜紭鍔匡紵",
+                f"{region}{subject}鎺掑悕鎴栧彛纰戞鎬庝箞鍙傝€冿紵",
+                f"{brand_name}鐨剓copy['quality_angle']}鏈夊摢浜涗寒鐐癸紵",
+                f"{service}璐圭敤銆佸懆鏈熷拰鏈嶅姟鍐呭搴旇鎬庝箞瀵规瘮锛?,
+                f"{brand_name}{copy['fit_question']}",
+                f"{service}閫夋嫨鏃舵渶瀹规槗韪╁摢浜涘潙锛?,
             ],
         },
         {
             "layer": "weight_layer",
-            "intent_name": f"政策合规/指南 - {brand_name}",
-            "representative_question": f"{service}需要满足哪些政策和合规要求？",
+            "intent_name": f"鏀跨瓥鍚堣/鎸囧崡 - {brand_name}",
+            "representative_question": f"{service}闇€瑕佹弧瓒冲摢浜涙斂绛栧拰鍚堣瑕佹眰锛?,
             "priority": 78,
             "questions": [
-                f"{service}需要满足哪些政策和合规要求？",
-                f"{service}证书、资质和备案怎么核验真伪？",
-                f"{region}{service}报名或采购前要准备哪些材料？",
-                f"{service}从咨询到完成交付的完整流程是什么？",
-                f"{brand_name}能提供哪些官方或第三方背书资料？",
+                f"{service}闇€瑕佹弧瓒冲摢浜涙斂绛栧拰鍚堣瑕佹眰锛?,
+                f"{service}{copy['material_check_question']}",
+                f"{region}{service}{copy['prepare_action']}",
+                f"{service}{copy['journey_question']}",
+                f"{brand_name}鑳芥彁渚涘摢浜涘畼鏂规垨绗笁鏂硅儗涔﹁祫鏂欙紵",
             ],
         },
         {
             "layer": "conversion_layer",
-            "intent_name": f"价格报名/承接 - {brand_name}",
-            "representative_question": f"{brand_name}{service}价格多少钱？",
+            "intent_name": f"{copy['conversion_intent']} - {brand_name}",
+            "representative_question": f"{brand_name}{service}浠锋牸澶氬皯閽憋紵",
             "priority": 84,
             "questions": [
-                f"{brand_name}{service}价格多少钱？",
-                f"{brand_name}报名或咨询流程是什么？",
-                f"{brand_name}地址和联系方式是什么？",
-                f"{brand_name}最近排期或交付周期是多久？",
-                f"{brand_name}是否有复训、售后或退款政策？",
-                f"{brand_name}官网、公众号或客服入口在哪里？",
+                f"{brand_name}{service}浠锋牸澶氬皯閽憋紵",
+                f"{brand_name}{copy['process_question']}",
+                f"{brand_name}鍦板潃鍜岃仈绯绘柟寮忔槸浠€涔堬紵",
+                f"{brand_name}{copy['cycle_question']}",
+                f"{brand_name}{copy['support_policy']}",
+                f"{brand_name}瀹樼綉銆佸叕浼楀彿鎴栧鏈嶅叆鍙ｅ湪鍝噷锛?,
             ],
         },
     ]
 
     if fact_context:
-        raw_groups[1]["questions"].append(f"{brand_name}公开资料里提到的资质证书有哪些？")
+        raw_groups[1]["questions"].append(f"{brand_name}{copy['public_material_question']}")
 
-    return _coerce_question_groups({"groups": raw_groups})
+    return _coerce_question_groups(
+        {"groups": raw_groups},
+        forbidden_terms=get_industry_forbidden_terms(project.industry),
+    )
 
 
-def _coerce_question_groups(parsed: Dict[str, Any]) -> List[Dict[str, Any]]:
+def _coerce_question_groups(
+    parsed: Dict[str, Any],
+    forbidden_terms: Optional[List[str]] = None,
+) -> List[Dict[str, Any]]:
     raw_groups = parsed.get("groups") or parsed.get("question_groups") or []
     if not isinstance(raw_groups, list):
         return []
@@ -552,7 +610,7 @@ def _coerce_question_groups(parsed: Dict[str, Any]) -> List[Dict[str, Any]]:
     for idx, raw in enumerate(raw_groups):
         if not isinstance(raw, dict):
             continue
-        intent_name = _clean_text(raw.get("intent_name") or raw.get("name") or raw.get("cluster") or f"问题组 {idx + 1}", 180)
+        intent_name = _clean_text(raw.get("intent_name") or raw.get("name") or raw.get("cluster") or f"闂缁?{idx + 1}", 180)
         layer = _normalize_layer(raw.get("layer"), intent_name)
         priority = _priority_to_int(raw.get("priority"), 80 if layer in {"pool_layer", "verification_layer"} else 70)
         questions: List[Dict[str, Any]] = []
@@ -570,7 +628,7 @@ def _coerce_question_groups(parsed: Dict[str, Any]) -> List[Dict[str, Any]]:
                 sample_policy = _clean_text(item.get("sample_policy") or "mvp", 30) or "mvp"
                 question_type = _clean_text(item.get("question_type") or item.get("type") or "brand_reputation", 100) or "brand_reputation"
                 raw_tags = item.get("tags") or item.get("labels") or ""
-                tags = "，".join(_split_terms(raw_tags)) if isinstance(raw_tags, str) else "，".join(str(tag) for tag in raw_tags[:8]) if isinstance(raw_tags, list) else ""
+                tags = "锛?.join(_split_terms(raw_tags)) if isinstance(raw_tags, str) else "锛?.join(str(tag) for tag in raw_tags[:8]) if isinstance(raw_tags, list) else ""
                 focus = bool(item.get("focus") or item.get("important") or False)
                 keyword_breakdown = _stringify_question_meta(item.get("keyword_breakdown") or item.get("keywords"), 1200)
                 question_formula = _stringify_question_meta(item.get("question_formula") or item.get("formula"), 500)
@@ -591,7 +649,7 @@ def _coerce_question_groups(parsed: Dict[str, Any]) -> List[Dict[str, Any]]:
                 evidence_support = None
                 content_actionability = None
                 recommended_platforms = None
-            q_text = _clean_text(q_text, 260)
+            q_text = _sanitize_generated_question_text(q_text, forbidden_terms=forbidden_terms)
             if not q_text or q_text in seen_questions:
                 continue
             seen_questions.add(q_text)
@@ -625,7 +683,12 @@ def _coerce_question_groups(parsed: Dict[str, Any]) -> List[Dict[str, Any]]:
             if len(questions) >= 8 or total_questions >= 36:
                 break
 
-        representative = _clean_text(raw.get("representative_question") or (questions[0]["question_text"] if questions else ""), 260)
+        representative = _sanitize_generated_question_text(
+            raw.get("representative_question"),
+            forbidden_terms=forbidden_terms,
+        )
+        if not representative and questions:
+            representative = questions[0]["question_text"]
         if not representative or not questions:
             continue
         groups.append({
@@ -649,52 +712,51 @@ async def _generate_question_groups_with_llm(project, brand_name: str, facts: Li
         registry = get_model_registry()
         config = registry.get_default_model()
         if not config:
-            return None, "未配置可用的大模型，已使用本地矩阵模板生成"
+            return None, "鏈厤缃彲鐢ㄧ殑澶фā鍨嬶紝宸蹭娇鐢ㄦ湰鍦扮煩闃垫ā鏉跨敓鎴?
 
         fact_context, credentials, _ = _extract_fact_context(facts, limit=36)
         service = _infer_service(project, brand_name, facts)
+        archetype = get_question_archetype(project.industry)
         context = {
             "project_name": project.name,
             "brand_name": brand_name,
             "industry": _industry_label(project.industry),
             "region": project.region,
             "service_or_product": service,
-            "target_ai_products": project.target_ai_products,
+            "industry_template": {
+                "entity_label": archetype.get("entity_label"),
+                "forbidden_terms": archetype.get("forbidden_terms") or [],
+                "positive_examples": archetype.get("positive_examples") or [],
+                "negative_examples": archetype.get("negative_examples") or [],
+            },
+            "excluded_ai_platform_terms": list(AI_PLATFORM_TERMS),
+            "monitoring_ai_platform_note": "杩欎簺鏄娴嬪钩鍙?妯″瀷鍚嶇О锛屽彧鐢ㄤ簬鍚庣画鐩戞祴锛屼笉鏄敤鎴枫€佹湇鍔°€佸搧绫绘垨闂鍏抽敭璇嶏紱鐢熸垚闂鏃朵笉瑕佸啓鍏ラ棶棰樻枃鏈€?,
             "notes": project.notes,
             "known_facts": fact_context,
             "credential_clues": credentials,
         }
         prompt = f"""
-你是 GEO/AIO 生成式引擎优化的问题矩阵专家。请基于项目资料生成问题库，不要生成文章。
+浣犳槸 GEO/AIO 鐢熸垚寮忓紩鎿庝紭鍖栫殑闂鐭╅樀涓撳銆傝鍩轰簬椤圭洰璧勬枡鐢熸垚闂搴擄紝涓嶈鐢熸垚鏂囩珷銆?
+鏍稿績閫昏緫鍙傝€冿細
+1. 鍏堣鐩栫湡瀹炵敤鎴蜂細鍚?AI 鎻愰棶鐨勬悳绱㈡剰鍥撅紝鑰屼笉鏄満姊板叧閿瘝鍫嗗彔銆?2. 蹇呴』瑕嗙洊杩欎簺绨囷細鍝佺被鎺ㄨ崘/鍝佺墝鍏ユ睜銆佸彲淇￠獙璇併€佷环鏍?璐拱/鍜ㄨ/鎶ュ悕/閲囪喘鎵挎帴銆佷骇鍝佹垨鏈嶅姟鍖归厤銆佺珵鍝佸姣斻€佹渚嬪彛纰戙€佹斂绛栧悎瑙勩€?3. 鎸夊洓灞傜粍缁囷細pool_layer 鍏ユ睜灞傘€乿erification_layer 楠岃瘉/鍙ｇ灞傘€亀eight_layer 鏉冮噸灞傘€乧onversion_layer 杞寲/鎵挎帴灞傘€?4. 濡傛灉璧勬枡閲屾病鏈夋槑纭簨瀹烇紝鍙兘鍐欐垚鈥滄湁娌℃湁/濡備綍鏍搁獙/鎬庝箞鏍封€濈被闂锛屼笉瑕佹妸鏈‘璁ゅ唴瀹瑰啓鎴愪簨瀹炪€?5. 闂瑕佸儚鐪熷疄鐢ㄦ埛浼氶棶 AI 鐨勮嚜鐒惰瑷€锛岄伩鍏嶉噸澶嶁€滃摢瀹跺ソ 鎺ㄨ崘鈥濄€?6. 濡傛灉鏈夊煄甯?鍦板尯锛岃嚦灏戜竴鍗婇棶棰樿嚜鐒跺寘鍚湴鍖鸿瘝锛涘鏋滄湁鍝佺墝鍚嶏紝楠岃瘉灞傚拰杞寲灞傚繀椤诲寘鍚搧鐗屽悕銆?7. 涓嶈榛樿浣跨敤鍩硅琛屼笟璇嶏紝渚嬪鈥滆绋嬨€佹姤鍚嶃€佸鍛樸€侀€氳繃鐜囥€佸璁€佸笀璧勩€佹牎鍖衡€濓紱鍙湁椤圭洰璧勬枡鏄庣‘灞炰簬鍩硅/鏁欒偛鏃舵墠鍙娇鐢ㄣ€?8. 涓嶈鎶婃娴嬪钩鍙版垨妯″瀷鍚嶇О鍐欏叆闂鏂囨湰锛屼緥濡?DeepSeek銆並imi銆佽眴鍖呫€佹枃蹇冦€侀€氫箟銆丆hatGPT銆丟emini銆?
+椤圭洰璧勬枡锛?{json.dumps(context, ensure_ascii=False, indent=2)}
 
-核心逻辑参考：
-1. 先覆盖真实用户会向 AI 提问的搜索意图，而不是机械关键词堆叠。
-2. 必须覆盖这些簇：本地推荐/品牌入池、资质可信、价格报名、课程或服务匹配、竞品对比、案例口碑、政策合规。
-3. 按四层组织：pool_layer 入池层、verification_layer 验证/口碑层、weight_layer 权重层、conversion_layer 转化/承接层。
-4. 如果资料里没有明确事实，只能写成“有没有/如何核验/怎么样”类问题，不要把未确认内容写成事实。
-5. 问题要像真实用户会问 AI 的自然语言，避免重复“哪家好 推荐”。
-6. 如果有城市/地区，至少一半问题自然包含地区词；如果有品牌名，验证层和转化层必须包含品牌名。
-
-项目资料：
-{json.dumps(context, ensure_ascii=False, indent=2)}
-
-请只输出 JSON，不要 Markdown，不要解释。格式：
+璇峰彧杈撳嚭 JSON锛屼笉瑕?Markdown锛屼笉瑕佽В閲娿€傛牸寮忥細
 {{
   "groups": [
     {{
       "layer": "pool_layer",
-      "intent_name": "本地推荐/入池 - 品牌名",
-      "representative_question": "代表性问题",
+      "intent_name": "鏈湴鎺ㄨ崘/鍏ユ睜 - 鍝佺墝鍚?,
+      "representative_question": "浠ｈ〃鎬ч棶棰?,
       "priority": 85,
       "questions": [
-        {{"question_text": "具体问题", "priority": 85, "sample_policy": "mvp"}}
+        {{"question_text": "鍏蜂綋闂", "priority": 85, "sample_policy": "mvp"}}
       ]
     }}
   ]
 }}
 
-数量要求：生成 5 个问题组，每组 5-7 个问题，总量 25-35 个。
-"""
+鏁伴噺瑕佹眰锛氱敓鎴?5 涓棶棰樼粍锛屾瘡缁?5-7 涓棶棰橈紝鎬婚噺 25-35 涓€?"""
         prompt = render_prompt_template("geo/question_bank_v1.md", {
             "project_context_json": json.dumps(context, ensure_ascii=False, indent=2),
         })
@@ -708,18 +770,21 @@ async def _generate_question_groups_with_llm(project, brand_name: str, facts: Li
         })
         response = await client.chat(
             [
-                {"role": "system", "content": "你只输出可解析 JSON。"},
+                {"role": "system", "content": "浣犲彧杈撳嚭鍙В鏋?JSON銆?},
                 {"role": "user", "content": prompt},
             ],
             temperature=0.25,
             max_tokens=3600,
         )
-        groups = _coerce_question_groups(_json_from_llm_text(response.content))
+        groups = _coerce_question_groups(
+            _json_from_llm_text(response.content),
+            forbidden_terms=archetype.get("forbidden_terms") or [],
+        )
         if len(groups) >= 3 and sum(len(g["questions"]) for g in groups) >= 12:
             return groups, None
-        return None, "大模型返回的问题矩阵数量不足，已使用本地矩阵模板兜底"
+        return None, "澶фā鍨嬭繑鍥炵殑闂鐭╅樀鏁伴噺涓嶈冻锛屽凡浣跨敤鏈湴鐭╅樀妯℃澘鍏滃簳"
     except Exception as exc:
-        return None, f"大模型生成失败，已使用本地矩阵模板兜底：{str(exc)[:180]}"
+        return None, f"澶фā鍨嬬敓鎴愬け璐ワ紝宸蹭娇鐢ㄦ湰鍦扮煩闃垫ā鏉垮厹搴曪細{str(exc)[:180]}"
 
 
 def _build_question_generation_strategy(project, brand_name: str, facts: List[BrandFact]) -> Dict[str, Any]:
@@ -741,29 +806,29 @@ def _build_question_generation_strategy(project, brand_name: str, facts: List[Br
     formulas = [
         {
             "layer": "pool_layer",
-            "name": "本地品类推荐",
-            "formula": "地区词 + 服务/品类词 + 哪家靠谱/推荐/怎么选",
+            "name": "鏈湴鍝佺被鎺ㄨ崘",
+            "formula": "鍦板尯璇?+ 鏈嶅姟/鍝佺被璇?+ 鍝闈犺氨/鎺ㄨ崘/鎬庝箞閫?,
         },
         {
             "layer": "verification_layer",
-            "name": "资质与可信核验",
-            "formula": "品牌词 + 资质/证书/编号/地址 + 是否真实/如何核验",
+            "name": "璧勮川涓庡彲淇℃牳楠?,
+            "formula": "鍝佺墝璇?+ 璧勮川/璇佷功/缂栧彿/鍦板潃 + 鏄惁鐪熷疄/濡備綍鏍搁獙",
         },
         {
             "layer": "weight_layer",
-            "name": "对比与权重提升",
-            "formula": "品牌词 + 竞品/同类机构 + 优势/价格/案例/口碑对比",
+            "name": "瀵规瘮涓庢潈閲嶆彁鍗?,
+            "formula": "鍝佺墝璇?+ 绔炲搧/鍚岀被鏈烘瀯 + 浼樺娍/浠锋牸/妗堜緥/鍙ｇ瀵规瘮",
         },
         {
             "layer": "conversion_layer",
-            "name": "转化承接",
-            "formula": "品牌词 + 价格/流程/地址/预约/售后 + 具体怎么做",
+            "name": "杞寲鎵挎帴",
+            "formula": "鍝佺墝璇?+ 浠锋牸/娴佺▼/鍦板潃/棰勭害/鍞悗 + 鍏蜂綋鎬庝箞鍋?,
         },
     ]
     return {
         "keyword_breakdown": keyword_breakdown,
         "question_formulas": formulas,
-        "principle": "问题库优先模拟真实用户向 AI 提问的自然语言，并把事实库中的资质、产品、地址、价格、案例等可信信息转成可检测的问题线索。",
+        "principle": "闂搴撲紭鍏堟ā鎷熺湡瀹炵敤鎴峰悜 AI 鎻愰棶鐨勮嚜鐒惰瑷€锛屽苟鎶婁簨瀹炲簱涓殑璧勮川銆佷骇鍝併€佸湴鍧€銆佷环鏍笺€佹渚嬬瓑鍙俊淇℃伅杞垚鍙娴嬬殑闂绾跨储銆?,
     }
 
 
@@ -775,7 +840,7 @@ async def list_projects(
     limit: int = Query(100, ge=1, le=1000),
     db: AsyncSession = Depends(get_db),
 ):
-    """获取项目列表"""
+    """鑾峰彇椤圭洰鍒楄〃"""
     service = ProjectService(db)
     projects = await service.list_projects(industry=industry, status=status, skip=skip, limit=limit)
     return projects
@@ -787,7 +852,7 @@ async def create_project(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_roles("project_owner")),
 ):
-    """创建新项目"""
+    """鍒涘缓鏂伴」鐩?""
     service = ProjectService(db)
     project = await service.create_project(data)
     return project
@@ -798,7 +863,7 @@ async def get_project(
     project_id: UUID,
     db: AsyncSession = Depends(get_db)
 ):
-    """获取项目详情"""
+    """鑾峰彇椤圭洰璇︽儏"""
     service = ProjectService(db)
     project = await service.get_project(project_id)
     if not project:
@@ -813,7 +878,7 @@ async def update_project(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_roles("project_owner")),
 ):
-    """更新项目"""
+    """鏇存柊椤圭洰"""
     service = ProjectService(db)
     project = await service.update_project(project_id, data)
     if not project:
@@ -827,7 +892,7 @@ async def delete_project(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_roles("project_owner")),
 ):
-    """删除项目，并同步删除该项目下的关联数据。"""
+    """鍒犻櫎椤圭洰锛屽苟鍚屾鍒犻櫎璇ラ」鐩笅鐨勫叧鑱旀暟鎹€?""
     service = ProjectService(db)
     deleted = await service.delete_project(project_id)
     if not deleted:
@@ -842,7 +907,7 @@ async def diagnose_gaps(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_roles("collector", "strategist", "project_owner")),
 ):
-    """资料缺口诊断"""
+    """璧勬枡缂哄彛璇婃柇"""
     service = ProjectService(db)
     result = await service.diagnose_gaps(project_id, provided_fields)
     if "error" in result:
@@ -856,7 +921,7 @@ async def diagnose_gaps_from_facts(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_roles("collector", "strategist", "project_owner")),
 ):
-    """基于当前项目事实库自动诊断资料缺口，并返回补齐动作。"""
+    """鍩轰簬褰撳墠椤圭洰浜嬪疄搴撹嚜鍔ㄨ瘖鏂祫鏂欑己鍙ｏ紝骞惰繑鍥炶ˉ榻愬姩浣溿€?""
     service = ProjectService(db)
     result = await service.diagnose_gaps_from_facts(project_id)
     if "error" in result:
@@ -869,7 +934,7 @@ async def get_project_brands(
     project_id: UUID,
     db: AsyncSession = Depends(get_db)
 ):
-    """获取项目关联的品牌列表"""
+    """鑾峰彇椤圭洰鍏宠仈鐨勫搧鐗屽垪琛?""
     result = await db.execute(select(Brand).where(Brand.project_id == project_id))
     brands = result.scalars().all()
     return [
@@ -893,7 +958,7 @@ async def get_brand_facts_summary(
     project_id: UUID,
     db: AsyncSession = Depends(get_db)
 ):
-    """获取项目品牌事实库摘要"""
+    """鑾峰彇椤圭洰鍝佺墝浜嬪疄搴撴憳瑕?""
     service = ProjectService(db)
     result = await service.get_brand_facts_summary(project_id)
     return result
@@ -905,9 +970,7 @@ async def get_project_diagnosis_report(
     db: AsyncSession = Depends(get_db)
 ):
     """
-    基于已录入检测样本生成品牌 AI 体检、回答模式和竞品差距的观察报告。
-    该接口只做可解释的样本归纳，不宣称掌握模型内部排序逻辑。
-    """
+    鍩轰簬宸插綍鍏ユ娴嬫牱鏈敓鎴愬搧鐗?AI 浣撴銆佸洖绛旀ā寮忓拰绔炲搧宸窛鐨勮瀵熸姤鍛娿€?    璇ユ帴鍙ｅ彧鍋氬彲瑙ｉ噴鐨勬牱鏈綊绾筹紝涓嶅绉版帉鎻℃ā鍨嬪唴閮ㄦ帓搴忛€昏緫銆?    """
     service = ProjectService(db)
     project = await service.get_project(project_id)
     if not project:
@@ -1006,19 +1069,19 @@ async def get_project_diagnosis_report(
             "source_signal": {
                 "explicit_citations": sum(sample.explicit_citations for sample in samples),
                 "inferred_source_matches": sum(sample.inferred_source_matches for sample in samples),
-                "note": "显式引用和推定匹配不能合并，只能分别解释。",
+                "note": "鏄惧紡寮曠敤鍜屾帹瀹氬尮閰嶄笉鑳藉悎骞讹紝鍙兘鍒嗗埆瑙ｉ噴銆?,
             },
         },
         "competitor_gap": {
             "detected_competitors": competitors,
             "target_brand_mentions": mentioned,
-            "note": "竞品识别来自样本文本中的实体提取，属于观察线索；正式报告需人工复核竞品名单。",
+            "note": "绔炲搧璇嗗埆鏉ヨ嚜鏍锋湰鏂囨湰涓殑瀹炰綋鎻愬彇锛屽睘浜庤瀵熺嚎绱紱姝ｅ紡鎶ュ憡闇€浜哄伐澶嶆牳绔炲搧鍚嶅崟銆?,
         },
         "actions": _diagnosis_actions(mention_rate, recommendation_rate, dimension_counts, len(public_facts)),
         "limitations": [
-            "该诊断基于系统内已录入样本，不能代表所有 AI 产品长期表现。",
-            "回答模式分析只归纳可观察样本，不声称掌握模型内部排序逻辑。",
-            "样本数不足时，结果只能作为初步观察，不应用作验收结论。",
+            "璇ヨ瘖鏂熀浜庣郴缁熷唴宸插綍鍏ユ牱鏈紝涓嶈兘浠ｈ〃鎵€鏈?AI 浜у搧闀挎湡琛ㄧ幇銆?,
+            "鍥炵瓟妯″紡鍒嗘瀽鍙綊绾冲彲瑙傚療鏍锋湰锛屼笉澹扮О鎺屾彙妯″瀷鍐呴儴鎺掑簭閫昏緫銆?,
+            "鏍锋湰鏁颁笉瓒虫椂锛岀粨鏋滃彧鑳戒綔涓哄垵姝ヨ瀵燂紝涓嶅簲鐢ㄤ綔楠屾敹缁撹銆?,
         ],
     }
 
@@ -1031,9 +1094,7 @@ async def generate_content_matrix(
     user: User = Depends(require_roles("strategist", "project_owner")),
 ):
     """
-    将当前有效问题矩阵转成内容任务。
-    每个问题组生成一个可写作任务，避免问题库和内容管理之间断链。
-    """
+    灏嗗綋鍓嶆湁鏁堥棶棰樼煩闃佃浆鎴愬唴瀹逛换鍔°€?    姣忎釜闂缁勭敓鎴愪竴涓彲鍐欎綔浠诲姟锛岄伩鍏嶉棶棰樺簱鍜屽唴瀹圭鐞嗕箣闂存柇閾俱€?    """
     service = ProjectService(db)
     project = await service.get_project(project_id)
     if not project:
@@ -1051,7 +1112,7 @@ async def generate_content_matrix(
     )
     groups = list(groups_result.scalars().all())
     if not groups:
-        raise HTTPException(status_code=400, detail="当前项目还没有可用的问题矩阵，请先生成问题库")
+        raise HTTPException(status_code=400, detail="褰撳墠椤圭洰杩樻病鏈夊彲鐢ㄧ殑闂鐭╅樀锛岃鍏堢敓鎴愰棶棰樺簱")
 
     cancelled_tasks = 0
     if data.replace_existing:
@@ -1166,13 +1227,11 @@ async def generate_content_matrix(
 async def generate_question_bank(
     project_id: UUID,
     brand_name: Optional[str] = None,
-    replace_existing: bool = Query(True, description="重新生成时归档旧问题矩阵，避免重复累加"),
+    replace_existing: bool = Query(True, description="閲嶆柊鐢熸垚鏃跺綊妗ｆ棫闂鐭╅樀锛岄伩鍏嶉噸澶嶇疮鍔?),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    生成 GEO 问题矩阵。
-    优先使用用户配置的大模型生成；没有可用模型或模型失败时，使用原项目同源的确定性矩阵模板兜底。
-    """
+    鐢熸垚 GEO 闂鐭╅樀銆?    浼樺厛浣跨敤鐢ㄦ埛閰嶇疆鐨勫ぇ妯″瀷鐢熸垚锛涙病鏈夊彲鐢ㄦā鍨嬫垨妯″瀷澶辫触鏃讹紝浣跨敤鍘熼」鐩悓婧愮殑纭畾鎬х煩闃垫ā鏉垮厹搴曘€?    """
     service = ProjectService(db)
     project = await service.get_project(project_id)
     if not project:
@@ -1187,7 +1246,7 @@ async def generate_question_bank(
         brand_name
         or (primary_brand.brand_name if primary_brand else None)
         or project.name
-        or "该品牌"
+        or "璇ュ搧鐗?
     )
 
     facts_result = await db.execute(
