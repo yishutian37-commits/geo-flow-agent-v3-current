@@ -23,27 +23,27 @@ QUESTION_TEMPLATE_ACTIONS = {
 COMMON_LOW_VALUE_TERMS = {
     "deepseek",
     "kimi",
-    "璞嗗寘",
-    "鏂囧績",
-    "閫氫箟",
-    "鍗冮棶",
+    "豆包",
+    "文心",
+    "通义",
+    "千问",
     "chatgpt",
     "gemini",
     "mimo",
-    "妯″瀷",
-    "AI骞冲彴",
+    "模型",
+    "AI平台",
 }
 
 TRAINING_BIASED_TERMS = {
-    "鎶ュ悕",
-    "瀛﹀憳",
-    "澶嶈",
-    "甯堣祫",
-    "鏍″尯",
-    "閫氳繃鐜?,
-    "璇剧▼",
-    "寮€鐝?,
-    "鎷胯瘉",
+    "报名",
+    "学员",
+    "复训",
+    "师资",
+    "校区",
+    "通过率",
+    "课程",
+    "开班",
+    "拿证",
 }
 
 
@@ -214,11 +214,11 @@ async def build_question_template_suggestions(
 
         reason_parts = []
         if positive_examples:
-            reason_parts.append("妫€娴嬪埌浜哄伐鏂板鎴栨敼鍐欏悗鐨勯珮璐ㄩ噺闂锛屽彲娌夋穩涓烘鍚戞牱渚?)
+            reason_parts.append("检测到人工新增或改写后的高质量问题，可沉淀为正向样例")
         if negative_examples:
-            reason_parts.append("妫€娴嬪埌浜哄伐鍒犻櫎銆佺鐢ㄦ垨鏀瑰啓鍓嶇殑闂锛屽彲娌夋穩涓哄弽鍚戞牱渚?)
+            reason_parts.append("检测到人工删除、禁用或改写前的问题，可沉淀为反向样例")
         if add_forbidden_terms:
-            reason_parts.append("妫€娴嬪埌琚垹闄ゆ垨鏇挎崲鐨勯棶棰樹腑瀛樺湪鍙鐢ㄧ殑绂佺敤璇?)
+            reason_parts.append("检测到被删除或替换的问题中存在可复用的禁用词")
 
         suggestions.append({
             "industry": industry_key,
@@ -227,7 +227,7 @@ async def build_question_template_suggestions(
             "positive_examples": positive_examples,
             "negative_examples": negative_examples,
             "feedback_ids": [item["id"] for item in items],
-            "reason": "锛?.join(reason_parts) or "鏍规嵁浜哄伐闂璋冩暣鐢熸垚妯℃澘浼樺寲寤鸿",
+            "reason": "；".join(reason_parts) or "根据人工问题调整生成模板优化建议",
         })
     return suggestions
 
