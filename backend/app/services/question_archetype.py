@@ -65,7 +65,7 @@ def get_service_patterns(industry: Optional[str] = None) -> List[Dict[str, str]]
 
 def normalize_brand_short_name(brand_name: str) -> str:
     return re.sub(
-        r"(鏈夐檺璐ｄ换鍏徃|鏈夐檺鍏徃|绉戞妧鍙戝睍|绉戞妧|鍏徃|闆嗗洟|锛?*?锛墊\(.*?\))",
+        r"(有限责任公司|有限公司|科技发展|科技|公司|集团|（.*?）|\(.*?\))",
         "",
         brand_name or "",
     ).strip()
@@ -75,7 +75,7 @@ def infer_service_from_archetype(
     industry: Optional[str],
     text: str,
     brand_name: str,
-    industry_label: str = "閫氱敤琛屼笟",
+    industry_label: str = "通用行业",
 ) -> str:
     for item in get_service_patterns(industry):
         if re.search(item["pattern"], text or "", flags=re.I):
@@ -86,7 +86,7 @@ def infer_service_from_archetype(
         return str(archetype["fallback_service"])
 
     name = normalize_brand_short_name(brand_name)
-    suffix = str(archetype.get("fallback_service_suffix") or "鏈嶅姟")
+    suffix = str(archetype.get("fallback_service_suffix") or "服务")
     return f"{name or industry_label}{suffix}"
 
 
@@ -105,8 +105,8 @@ def _format_copy(copy: Dict[str, Any], variables: Dict[str, Any]) -> Dict[str, s
 
 
 def service_subject(service: str, entity_label: str) -> str:
-    service = service or "鏈嶅姟"
-    if re.search(r"(鏈烘瀯|闂ㄥ簵|渚涘簲鍟唡鏈嶅姟鍟唡鍝佺墝|鍘傚|鍏徃)$", service):
+    service = service or "服务"
+    if re.search(r"(机构|门店|供应商|服务商|品牌|厂家|公司)$", service):
         return service
     return f"{service}{entity_label}"
 
@@ -117,7 +117,7 @@ def get_industry_question_copy(
     region: Optional[str] = None,
 ) -> Dict[str, str]:
     archetype = get_question_archetype(industry)
-    entity_label = str(archetype.get("entity_label") or "鏈嶅姟鍟?)
+    entity_label = str(archetype.get("entity_label") or "服务商")
     subject = service_subject(service, entity_label)
     copy = _format_copy(
         archetype.get("copy") or {},
@@ -125,7 +125,7 @@ def get_industry_question_copy(
             "service": service,
             "entity_label": entity_label,
             "subject": subject,
-            "region": region or "鏈湴",
+            "region": region or "本地",
         },
     )
     copy["entity_label"] = entity_label
