@@ -2,6 +2,7 @@
   "name": "geo-flow-agent-desktop",
   "version": "2.3.0",
   "private": true,
+  "license": "AGPL-3.0-or-later",
   "description": "GEO Flow Agent V2.3 desktop app",
   "main": "desktop/main.js",
   "scripts": {
