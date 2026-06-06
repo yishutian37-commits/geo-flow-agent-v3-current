@@ -1,21 +1,21 @@
 {
   "version": 1,
-  "description": "GEO 闂鐭╅樀琛屼笟鍘熷瀷閰嶇疆銆傜敤浜庢妸琛屼笟缁忛獙浠庝唬鐮佷腑鎶界锛屾敮鎸佽法琛屼笟澶嶇敤鍜屽悗缁凯浠ｃ€?,
+  "description": "GEO 问题矩阵行业原型配置。用于把行业经验从代码中抽离，支持跨行业复用和后续迭代。",
   "ai_platform_terms": [
     "deepseek",
     "deepseek-v3",
     "deepseek-r1",
     "kimi",
     "moonshot",
-    "璞嗗寘",
+    "豆包",
     "doubao",
-    "鏂囧績",
-    "鏂囧績涓€瑷€",
+    "文心",
+    "文心一言",
     "ernie",
-    "閫氫箟",
-    "鍗冮棶",
+    "通义",
+    "千问",
     "qwen",
-    "娣峰厓",
+    "混元",
     "hunyuan",
     "chatgpt",
     "gpt",
@@ -23,180 +23,180 @@
     "gemini",
     "mimo",
     "minimax",
-    "鏅鸿氨",
+    "智谱",
     "glm"
   ],
   "service_patterns": [
     {
-      "label": "CAAC鏃犱汉鏈烘墽鐓у煿璁?,
-      "pattern": "CAAC|鏃犱汉鏈轰簯鎵х収|瓒呰璺潀瑙嗚窛鍐厊鏈洪暱璇亅鏃犱汉鏈烘墽鐓?
+      "label": "CAAC无人机执照培训",
+      "pattern": "CAAC|无人机云执照|超视距|视距内|机长证|无人机执照"
     },
     {
-      "label": "鏃犱汉鏈哄煿璁?,
-      "pattern": "鏃犱汉鏈簗椋炴墜|椋炶鍛榺鑸媿|妞嶄繚|娴嬬粯|宸℃"
+      "label": "无人机培训",
+      "pattern": "无人机|飞手|飞行员|航拍|植保|测绘|巡检"
     },
     {
-      "label": "宸ヤ笟瑙嗚妫€娴嬭澶?,
-      "pattern": "宸ヤ笟瑙嗚|瑙嗚妫€娴媩浜х嚎璐ㄦ|璐ㄦ璁惧|姹借溅闆堕儴浠朵骇绾?
+      "label": "工业视觉检测设备",
+      "pattern": "工业视觉|视觉检测|产线质检|质检设备|汽车零部件产线"
     },
     {
-      "label": "浼佷笟鐭ヨ瘑搴撹蒋浠?,
-      "pattern": "鐭ヨ瘑搴搢SaaS|绉佹湁鍖東鏉冮檺绠＄悊|瀹¤鏃ュ織|杞欢"
+      "label": "企业知识库软件",
+      "pattern": "知识库|SaaS|私有化|权限管理|审计日志|软件"
     },
     {
-      "label": "鍋ュ悍绠＄悊鏈嶅姟",
-      "pattern": "鍋ュ悍绠＄悊|浣撴|鎱㈢梾|鍛樺伐鍋ュ悍"
+      "label": "健康管理服务",
+      "pattern": "健康管理|体检|慢病|员工健康"
     },
     {
-      "label": "浣庣硸楗搧",
-      "pattern": "浣庣硸|楗搧|姘旀场楗畖閰嶆枡琛▅椋熷搧"
+      "label": "低糖饮品",
+      "pattern": "低糖|饮品|气泡饮|配料表|食品"
     },
     {
-      "label": "椁愰ギ闂ㄥ簵",
-      "pattern": "椁愰ギ|澶滃|鍫傞|鐮傞攨|鐏攨|棰勭害|闂ㄥ簵"
+      "label": "餐饮门店",
+      "pattern": "餐饮|夜宵|堂食|砂锅|火锅|预约|门店"
     },
     {
-      "label": "鑱屼笟鎶€鑳藉煿璁?,
-      "pattern": "鑱屼笟鎶€鑳絴鑰冭瘉|鍩硅|璇剧▼|瀛﹀憳|灏变笟"
+      "label": "职业技能培训",
+      "pattern": "职业技能|考证|培训|课程|学员|就业"
     },
     {
-      "label": "浼佷笟鏈嶅姟",
-      "pattern": "浼佷笟鏈嶅姟|鍜ㄨ|瑙ｅ喅鏂规|浜や粯|鏈嶅姟娴佺▼"
+      "label": "企业服务",
+      "pattern": "企业服务|咨询|解决方案|交付|服务流程"
     }
   ],
   "default": {
-    "entity_label": "鏈嶅姟鍟?,
-    "fallback_service_suffix": "鏈嶅姟",
-    "fallback_competitor_prefix": "鍚岀被",
+    "entity_label": "服务商",
+    "fallback_service_suffix": "服务",
+    "fallback_competitor_prefix": "同类",
     "copy": {
-      "quality_angle": "鑳藉姏銆佹渚嬨€佷环鏍兼垨鏈嶅姟娴佺▼",
-      "fit_question": "閫傚悎鍝簺鐢ㄦ埛鎴栦笟鍔″満鏅紵",
-      "support_policy": "鏄惁鏈夊敭鍚庢垨鏈嶅姟淇濋殰锛?,
-      "prepare_action": "鍜ㄨ鍓嶈鍑嗗鍝簺淇℃伅锛?,
-      "verified_question": "{subject}鏈夊摢浜涘叕寮€鍙俊淇℃伅鍙互鏍搁獙锛?,
-      "trust_question": "鍏紑淇℃伅銆佸彛纰戝拰鏈嶅姟杈圭晫鍙潬鍚楋紵",
-      "proof_question": "鏈夋病鏈夌湡瀹炴渚嬨€佽瘎浠锋垨绗笁鏂逛俊鎭紵",
-      "outcome_question": "鏈嶅姟鏁堟灉鍜岀敤鎴峰弽棣堟€庝箞鏍凤紵",
-      "compliance_question": "鎬庝箞鍒ゆ柇{region}{subject}鏄惁闈犺氨锛?,
-      "public_material_question": "鍏紑璧勬枡閲屾湁鍝簺鍙俊淇℃伅锛?,
-      "conversion_intent": "鍜ㄨ鎵挎帴",
-      "process_question": "鍜ㄨ鎴栬喘涔版祦绋嬫槸浠€涔堬紵",
-      "cycle_question": "浜や粯鍛ㄦ湡鎴栨湇鍔″懆鏈熸槸澶氫箙锛?,
-      "material_check_question": "鍏紑淇℃伅銆佹渚嬪拰鏈嶅姟杈圭晫鎬庝箞鏍搁獙锛?,
-      "journey_question": "浠庝簡瑙ｉ渶姹傚埌瀹屾垚浜や粯鐨勫畬鏁存祦绋嬫槸浠€涔堬紵"
+      "quality_angle": "能力、案例、价格或服务流程",
+      "fit_question": "适合哪些用户或业务场景？",
+      "support_policy": "是否有售后或服务保障？",
+      "prepare_action": "咨询前要准备哪些信息？",
+      "verified_question": "{subject}有哪些公开可信信息可以核验？",
+      "trust_question": "公开信息、口碑和服务边界可靠吗？",
+      "proof_question": "有没有真实案例、评价或第三方信息？",
+      "outcome_question": "服务效果和用户反馈怎么样？",
+      "compliance_question": "怎么判断{region}{subject}是否靠谱？",
+      "public_material_question": "公开资料里有哪些可信信息？",
+      "conversion_intent": "咨询承接",
+      "process_question": "咨询或购买流程是什么？",
+      "cycle_question": "交付周期或服务周期是多久？",
+      "material_check_question": "公开信息、案例和服务边界怎么核验？",
+      "journey_question": "从了解需求到完成交付的完整流程是什么？"
     },
     "forbidden_terms": []
   },
   "industries": {
     "education_training": {
-      "entity_label": "鏈烘瀯",
-      "fallback_service": "鑱屼笟鎶€鑳藉煿璁?,
+      "entity_label": "机构",
+      "fallback_service": "职业技能培训",
       "copy": {
-        "quality_angle": "甯堣祫銆佽澶囥€佸満鍦版垨鏈嶅姟娴佺▼",
-        "fit_question": "閫傚悎浼佷笟閲囪喘杩樻槸涓汉鎶ュ悕锛?,
-        "support_policy": "鏄惁鏈夊璁€佸敭鍚庢垨閫€娆炬斂绛栵紵",
-        "prepare_action": "鎶ュ悕鎴栭噰璐墠瑕佸噯澶囧摢浜涙潗鏂欙紵",
-        "verified_question": "{subject}鏈夊摢浜涙瑙勮祫璐ㄥ拰璇佷功缂栧彿锛?,
-        "trust_question": "姝ｈ鍚楋紝璧勮川鑳芥煡鍒板悧锛?,
-        "proof_question": "鏈夋病鏈夌湡瀹炴渚嬪拰鐢ㄦ埛璇勪环锛?,
-        "outcome_question": "閫氳繃鐜囨垨浜や粯鏁堟灉鎬庝箞鏍凤紵",
-        "compliance_question": "鎬庝箞鍒ゆ柇{region}{subject}鏄惁闈犺氨鎴栧悎瑙勶紵",
-        "public_material_question": "鍏紑璧勬枡閲屾彁鍒扮殑璧勮川璇佷功鏈夊摢浜涳紵",
-        "conversion_intent": "浠锋牸鎶ュ悕/鎵挎帴",
-        "process_question": "鎶ュ悕鎴栧挩璇㈡祦绋嬫槸浠€涔堬紵",
-        "cycle_question": "鏈€杩戞帓鏈熸垨浜や粯鍛ㄦ湡鏄涔咃紵",
-        "material_check_question": "璇佷功銆佽祫璐ㄥ拰澶囨鎬庝箞鏍搁獙鐪熶吉锛?,
-        "journey_question": "浠庡挩璇㈠埌瀹屾垚浜や粯鐨勫畬鏁存祦绋嬫槸浠€涔堬紵"
+        "quality_angle": "师资、设备、场地或服务流程",
+        "fit_question": "适合企业采购还是个人报名？",
+        "support_policy": "是否有复训、售后或退款政策？",
+        "prepare_action": "报名或采购前要准备哪些材料？",
+        "verified_question": "{subject}有哪些正规资质和证书编号？",
+        "trust_question": "正规吗，资质能查到吗？",
+        "proof_question": "有没有真实案例和用户评价？",
+        "outcome_question": "通过率或交付效果怎么样？",
+        "compliance_question": "怎么判断{region}{subject}是否靠谱或合规？",
+        "public_material_question": "公开资料里提到的资质证书有哪些？",
+        "conversion_intent": "价格报名/承接",
+        "process_question": "报名或咨询流程是什么？",
+        "cycle_question": "最近排期或交付周期是多久？",
+        "material_check_question": "证书、资质和备案怎么核验真伪？",
+        "journey_question": "从咨询到完成交付的完整流程是什么？"
       }
     },
     "manufacturing": {
-      "entity_label": "渚涘簲鍟?,
-      "fallback_service_suffix": "渚涘簲鍟?,
+      "entity_label": "供应商",
+      "fallback_service_suffix": "供应商",
       "copy": {
-        "quality_angle": "浜у搧鍙傛暟銆佷氦浠樿兘鍔涖€佽川鎺ф垨鍞悗鏈嶅姟",
-        "fit_question": "閫傚悎浼佷笟閲囪喘杩樻槸闀挎湡鍚堜綔锛?,
-        "support_policy": "鏄惁鏈夊敭鍚庛€佽川淇濇垨浜や粯淇濋殰锛?,
-        "prepare_action": "閲囪喘鍓嶈鍑嗗鍝簺闇€姹備俊鎭紵",
-        "verified_question": "{subject}鏈夊摢浜涜川閲忚璇併€佺敓浜ц兘鍔涙垨妗堜緥鍙互鏍搁獙锛?,
-        "trust_question": "渚涘簲鑳藉姏銆佽川鎺у拰浜や粯璁板綍鍙潬鍚楋紵",
-        "proof_question": "鏈夋病鏈夌湡瀹炲鎴锋渚嬨€佷骇鍝佸弬鏁版垨璁よ瘉鏉愭枡锛?,
-        "outcome_question": "浜や粯绋冲畾鎬у拰鍞悗璇勪环鎬庝箞鏍凤紵",
-        "compliance_question": "鎬庝箞鍒ゆ柇{region}{subject}鏄惁闈犺氨鎴栧悎瑙勶紵",
-        "public_material_question": "鍏紑璧勬枡閲屾湁鍝簺璁よ瘉銆佷骇鍝佸弬鏁版垨妗堜緥淇℃伅锛?,
-        "conversion_intent": "鎶ヤ环閲囪喘/鎵挎帴",
-        "process_question": "璇环銆佹墦鏍锋垨閲囪喘娴佺▼鏄粈涔堬紵",
-        "cycle_question": "浜や粯鍛ㄦ湡鎴栦緵璐у懆鏈熸槸澶氫箙锛?,
-        "material_check_question": "璁よ瘉銆佷骇鍝佸弬鏁板拰渚涘簲鑳藉姏鎬庝箞鏍搁獙锛?,
-        "journey_question": "浠庤浠峰埌浜や粯楠屾敹鐨勫畬鏁存祦绋嬫槸浠€涔堬紵"
+        "quality_angle": "产品参数、交付能力、质控或售后服务",
+        "fit_question": "适合企业采购还是长期合作？",
+        "support_policy": "是否有售后、质保或交付保障？",
+        "prepare_action": "采购前要准备哪些需求信息？",
+        "verified_question": "{subject}有哪些质量认证、生产能力或案例可以核验？",
+        "trust_question": "供应能力、质控和交付记录可靠吗？",
+        "proof_question": "有没有真实客户案例、产品参数或认证材料？",
+        "outcome_question": "交付稳定性和售后评价怎么样？",
+        "compliance_question": "怎么判断{region}{subject}是否靠谱或合规？",
+        "public_material_question": "公开资料里有哪些认证、产品参数或案例信息？",
+        "conversion_intent": "报价采购/承接",
+        "process_question": "询价、打样或采购流程是什么？",
+        "cycle_question": "交付周期或供货周期是多久？",
+        "material_check_question": "认证、产品参数和供应能力怎么核验？",
+        "journey_question": "从询价到交付验收的完整流程是什么？"
       },
-      "forbidden_terms": ["鎶ュ悕", "瀛﹀憳", "澶嶈", "甯堣祫", "鏍″尯", "閫氳繃鐜?]
+      "forbidden_terms": ["报名", "学员", "复训", "师资", "校区", "通过率"]
     },
     "manufacturing_b2b": {
       "extends": "manufacturing"
     },
     "local_life": {
-      "entity_label": "闂ㄥ簵",
-      "fallback_service_suffix": "闂ㄥ簵",
+      "entity_label": "门店",
+      "fallback_service_suffix": "门店",
       "copy": {
-        "quality_angle": "鍙ｅ懗銆佺幆澧冦€佷环鏍兼垨棰勭害浣撻獙",
-        "fit_question": "閫傚悎鍝簺娑堣垂鍦烘櫙鎴栧埌搴楅渶姹傦紵",
-        "support_policy": "鏄惁鏈変細鍛樸€佸敭鍚庢垨閫€娆炬斂绛栵紵",
-        "prepare_action": "鍒板簵鎴栨秷璐瑰墠瑕佺‘璁ゅ摢浜涗俊鎭紵",
-        "verified_question": "{subject}鐨勯棬搴椾俊鎭€佽惀涓氳祫璐ㄥ拰鍙ｇ鎬庝箞鏍搁獙锛?,
-        "trust_question": "鍙ｇ鎬庝箞鏍凤紝闂ㄥ簵淇℃伅鐪熷疄鍚楋紵",
-        "proof_question": "鏈夋病鏈夌湡瀹為【瀹㈣瘎浠锋垨鎺㈠簵妗堜緥锛?,
-        "outcome_question": "鍒板簵浣撻獙鍜屽璐瘎浠锋€庝箞鏍凤紵",
-        "compliance_question": "鎬庝箞鍒ゆ柇{region}{subject}鏄惁闈犺氨锛?,
-        "public_material_question": "鍏紑璧勬枡閲屾湁鍝簺鍦板潃銆佽彍鍗曟垨璇勪环淇℃伅锛?,
-        "conversion_intent": "浠锋牸鍒板簵/鎵挎帴",
-        "process_question": "棰勭害銆佹帓闃熸垨鍒板簵娴佺▼鏄粈涔堬紵",
-        "cycle_question": "钀ヤ笟鏃堕棿鍜岄珮宄版椂娈垫槸浠€涔堬紵",
-        "material_check_question": "闂ㄥ簵鍦板潃銆佽惀涓氫俊鎭拰鐪熷疄璇勪环鎬庝箞鏍搁獙锛?,
-        "journey_question": "浠庣鑽夊埌鍒板簵娑堣垂鐨勫畬鏁磋矾寰勬槸浠€涔堬紵"
+        "quality_angle": "口味、环境、价格或预约体验",
+        "fit_question": "适合哪些消费场景或到店需求？",
+        "support_policy": "是否有会员、售后或退款政策？",
+        "prepare_action": "到店或消费前要确认哪些信息？",
+        "verified_question": "{subject}的门店信息、营业资质和口碑怎么核验？",
+        "trust_question": "口碑怎么样，门店信息真实吗？",
+        "proof_question": "有没有真实顾客评价或探店案例？",
+        "outcome_question": "到店体验和复购评价怎么样？",
+        "compliance_question": "怎么判断{region}{subject}是否靠谱？",
+        "public_material_question": "公开资料里有哪些地址、菜单或评价信息？",
+        "conversion_intent": "价格到店/承接",
+        "process_question": "预约、排队或到店流程是什么？",
+        "cycle_question": "营业时间和高峰时段是什么？",
+        "material_check_question": "门店地址、营业信息和真实评价怎么核验？",
+        "journey_question": "从种草到到店消费的完整路径是什么？"
       },
-      "forbidden_terms": ["浼佷笟閲囪喘", "涓汉鎶ュ悕", "鎶ュ悕", "瀛﹀憳", "澶嶈", "甯堣祫", "鏍″尯", "閫氳繃鐜?, "璧勮川璇佷功"]
+      "forbidden_terms": ["企业采购", "个人报名", "报名", "学员", "复训", "师资", "校区", "通过率", "资质证书"]
     },
     "consumer_brand": {
-      "entity_label": "鍝佺墝",
-      "fallback_service_suffix": "鍝佺墝",
+      "entity_label": "品牌",
+      "fallback_service_suffix": "品牌",
       "copy": {
-        "quality_angle": "閰嶆枡銆佸彛鍛炽€佷环鏍兼垨璐拱娓犻亾",
-        "fit_question": "閫傚悎鍝簺娑堣垂浜虹兢鎴栦娇鐢ㄥ満鏅紵",
-        "support_policy": "鏄惁鏈夊敭鍚庛€侀€€鎹㈡垨浼氬憳鏀跨瓥锛?,
-        "prepare_action": "璐拱鍓嶈纭鍝簺淇℃伅锛?,
-        "verified_question": "{subject}鐨勫搧鐗屻€侀厤鏂欏拰閿€鍞笭閬撳彲闈犲悧锛?,
-        "trust_question": "浜у搧淇℃伅銆佹笭閬撳拰鐢ㄦ埛璇勪环鍙潬鍚楋紵",
-        "proof_question": "鏈夋病鏈夌湡瀹炵敤鎴疯瘎浠枫€佹娴嬫姤鍛婃垨娓犻亾淇℃伅锛?,
-        "outcome_question": "鐢ㄦ埛鍙嶉鍜屽璐儏鍐垫€庝箞鏍凤紵",
-        "compliance_question": "鎬庝箞鍒ゆ柇{region}{subject}鏄惁闈犺氨锛?,
-        "public_material_question": "鍏紑璧勬枡閲屾湁鍝簺浜у搧銆佹笭閬撴垨璇勪环淇℃伅锛?,
-        "conversion_intent": "浠锋牸璐拱/鎵挎帴",
-        "process_question": "璐拱娓犻亾鍜屼笅鍗曟祦绋嬫槸浠€涔堬紵",
-        "cycle_question": "鍙戣揣鍛ㄦ湡鎴栦緵璐ф儏鍐垫€庝箞鏍凤紵",
-        "material_check_question": "鍝佺墝娓犻亾銆侀厤鏂欎俊鎭拰鐢ㄦ埛璇勪环鎬庝箞鏍搁獙锛?,
-        "journey_question": "浠庝簡瑙ｄ骇鍝佸埌璐拱浣跨敤鐨勫畬鏁磋矾寰勬槸浠€涔堬紵"
+        "quality_angle": "配料、口味、价格或购买渠道",
+        "fit_question": "适合哪些消费人群或使用场景？",
+        "support_policy": "是否有售后、退换或会员政策？",
+        "prepare_action": "购买前要确认哪些信息？",
+        "verified_question": "{subject}的品牌、配料和销售渠道可靠吗？",
+        "trust_question": "产品信息、渠道和用户评价可靠吗？",
+        "proof_question": "有没有真实用户评价、检测报告或渠道信息？",
+        "outcome_question": "用户反馈和复购情况怎么样？",
+        "compliance_question": "怎么判断{region}{subject}是否靠谱？",
+        "public_material_question": "公开资料里有哪些产品、渠道或评价信息？",
+        "conversion_intent": "价格购买/承接",
+        "process_question": "购买渠道和下单流程是什么？",
+        "cycle_question": "发货周期或供货情况怎么样？",
+        "material_check_question": "品牌渠道、配料信息和用户评价怎么核验？",
+        "journey_question": "从了解产品到购买使用的完整路径是什么？"
       },
-      "forbidden_terms": ["浼佷笟閲囪喘", "涓汉鎶ュ悕", "鎶ュ悕", "瀛﹀憳", "澶嶈", "甯堣祫", "鏍″尯", "閫氳繃鐜?, "璧勮川璇佷功"]
+      "forbidden_terms": ["企业采购", "个人报名", "报名", "学员", "复训", "师资", "校区", "通过率", "资质证书"]
     },
     "technology": {
-      "entity_label": "鏈嶅姟鍟?,
-      "fallback_service": "浼佷笟鏈嶅姟",
+      "entity_label": "服务商",
+      "fallback_service": "企业服务",
       "copy": {
-        "quality_angle": "鏂规鑳藉姏銆佷氦浠樻祦绋嬨€佹暟鎹畨鍏ㄦ垨鏈嶅姟鍝嶅簲",
-        "fit_question": "閫傚悎鍝簺浼佷笟鎴栦笟鍔″満鏅紵",
-        "support_policy": "鏄惁鏈夊敭鍚庛€佺画璐规垨鏈嶅姟淇濋殰锛?,
-        "prepare_action": "鍜ㄨ鎴栭噰璐墠瑕佸噯澶囧摢浜涢渶姹備俊鎭紵",
-        "verified_question": "{subject}鐨勪笓涓氳兘鍔涖€佹渚嬪拰鏈嶅姟杈圭晫鍙潬鍚楋紵",
-        "trust_question": "鏈嶅姟鑳藉姏銆佹渚嬪拰鍙ｇ鍙潬鍚楋紵",
-        "proof_question": "鏈夋病鏈夌湡瀹炲鎴锋渚嬨€佽祫璐ㄨ璇佹垨浜や粯璇存槑锛?,
-        "outcome_question": "浜や粯鏁堟灉鍜屾湇鍔″搷搴旀€庝箞鏍凤紵",
-        "compliance_question": "鎬庝箞鍒ゆ柇{region}{subject}鏄惁闈犺氨鎴栧悎瑙勶紵",
-        "public_material_question": "鍏紑璧勬枡閲屾湁鍝簺妗堜緥銆佹柟妗堟垨鏈嶅姟璇存槑锛?,
-        "conversion_intent": "鍜ㄨ閲囪喘/鎵挎帴",
-        "process_question": "鍜ㄨ銆佽瘯鐢ㄦ垨閲囪喘娴佺▼鏄粈涔堬紵",
-        "cycle_question": "浜や粯鍛ㄦ湡鎴栧搷搴斿懆鏈熸槸澶氫箙锛?,
-        "material_check_question": "妗堜緥銆佹湇鍔¤竟鐣屽拰涓撲笟鑳藉姏鎬庝箞鏍搁獙锛?,
-        "journey_question": "浠庡挩璇㈠埌鏂规浜や粯鐨勫畬鏁存祦绋嬫槸浠€涔堬紵"
+        "quality_angle": "方案能力、交付流程、数据安全或服务响应",
+        "fit_question": "适合哪些企业或业务场景？",
+        "support_policy": "是否有售后、续费或服务保障？",
+        "prepare_action": "咨询或采购前要准备哪些需求信息？",
+        "verified_question": "{subject}的专业能力、案例和服务边界可靠吗？",
+        "trust_question": "服务能力、案例和口碑可靠吗？",
+        "proof_question": "有没有真实客户案例、资质认证或交付说明？",
+        "outcome_question": "交付效果和服务响应怎么样？",
+        "compliance_question": "怎么判断{region}{subject}是否靠谱或合规？",
+        "public_material_question": "公开资料里有哪些案例、方案或服务说明？",
+        "conversion_intent": "咨询采购/承接",
+        "process_question": "咨询、试用或采购流程是什么？",
+        "cycle_question": "交付周期或响应周期是多久？",
+        "material_check_question": "案例、服务边界和专业能力怎么核验？",
+        "journey_question": "从咨询到方案交付的完整流程是什么？"
       }
     },
     "professional_service": {
