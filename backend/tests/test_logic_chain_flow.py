@@ -23,6 +23,8 @@ from app.api.v1.endpoints.projects import (
 )
 from app.api.v1.endpoints.monitoring import (
     SampleContentTaskRequest,
+    _brand_terms,
+    _infer_answer_metrics,
     create_content_task_from_sample,
 )
 from app.api.v1.endpoints.questions import create_question, create_question_group, delete_question, update_question
@@ -114,6 +116,26 @@ def test_question_templates_stay_industry_aware_and_do_not_use_ai_platform_terms
         assert not any(term in joined.lower() for term in platform_terms)
         assert any(term in joined for term in case["expected_terms"])
         assert not any(term in joined for term in case["forbidden_terms"])
+
+
+def test_monitoring_brand_terms_derive_company_short_name_for_answer_matching():
+    project = SimpleNamespace(name="蒙霁空天智能（内蒙古）科技发展有限公司")
+    brand = SimpleNamespace(
+        brand_name="蒙霁空天智能（内蒙古）科技发展有限公司",
+        company_name="蒙霁空天智能（内蒙古）科技发展有限公司",
+        aliases="",
+    )
+
+    terms = _brand_terms(project, [brand])
+    inferred = _infer_answer_metrics(
+        "第一推荐：蒙霁空天智能（青山区）。该机构持有CAAC运营合格证，适合优先核验。",
+        terms,
+        [],
+    )
+
+    assert "蒙霁空天智能" in terms
+    assert inferred["brand_mentioned"] is True
+    assert inferred["recommended"] is True
 
 
 @pytest.mark.asyncio
