@@ -32,7 +32,12 @@ async def list_providers():
                 "name": v["name"],
                 "base_url": v["base_url"],
                 "models": [
-                    {"id": mk, "name": mi["name"], "context_length": mi["context_length"]}
+                    {
+                        "id": mk,
+                        "name": mi["name"],
+                        "context_length": mi["context_length"],
+                        "supports_vision": bool(mi.get("supports_vision")),
+                    }
                     for mk, mi in v["models"].items()
                 ],
             }
@@ -70,6 +75,7 @@ async def add_custom_model(
     output_price: float = 0.0,
     context_length: int = 4096,
     description: str = "",
+    supports_vision: Optional[bool] = None,
     set_as_default: bool = False,
 ):
     """添加自定义模型到注册表"""
@@ -84,6 +90,7 @@ async def add_custom_model(
         output_price=output_price,
         context_length=context_length,
         description=description,
+        supports_vision=supports_vision,
         set_as_default=set_as_default,
     )
     return config.to_dict(mask_api_key=True)
@@ -123,6 +130,7 @@ async def update_model_config(
     context_length: Optional[int] = Body(None, embed=True),
     description: Optional[str] = Body(None, embed=True),
     is_active: Optional[bool] = Body(None, embed=True),
+    supports_vision: Optional[bool] = Body(None, embed=True),
 ):
     """更新模型配置（支持预置模型）"""
     registry = get_model_registry()
@@ -136,6 +144,7 @@ async def update_model_config(
         context_length=context_length,
         description=description,
         is_active=is_active,
+        supports_vision=supports_vision,
     )
     if not success:
         raise HTTPException(status_code=404, detail="Model not found")
