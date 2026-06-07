@@ -26,7 +26,7 @@ import {
 } from '../services/api';
 import Table from '../components/SafeTable';
 
-const { Option } = Select;
+const { Option, OptGroup } = Select;
 const { TextArea } = Input;
 const { Text, Paragraph } = Typography;
 const { TabPane } = Tabs;
@@ -338,8 +338,24 @@ function ContentManagement() {
       message.warning('请先选择内容任务所属项目');
       return;
     }
+    const payload = { ...values };
+    delete payload.question_link;
+    delete payload.group_id;
+    delete payload.question_id;
+    if (values.question_link) {
+      const [linkType, linkId] = String(values.question_link).split(':');
+      if (linkType === 'question') {
+        const group = questionGroups.find((item) =>
+          (item.questions || []).some((question) => question.id === linkId)
+        );
+        payload.question_id = linkId;
+        payload.group_id = group?.id;
+      } else if (linkType === 'group') {
+        payload.group_id = linkId;
+      }
+    }
     try {
-      await contentTasksApi.create(values);
+      await contentTasksApi.create(payload);
       message.success('内容任务已创建');
       setTaskModalVisible(false);
       taskForm.resetFields();
@@ -354,6 +370,8 @@ function ContentManagement() {
     taskForm.setFieldsValue({
       project_id: defaultProjectId,
       group_id: undefined,
+      question_id: undefined,
+      question_link: undefined,
       content_type: 'brand_intro',
       layer: 'verification_layer',
       priority: 'medium',
@@ -1109,7 +1127,7 @@ function ContentManagement() {
               showSearch
               optionFilterProp="children"
               onChange={(projectId) => {
-                taskForm.setFieldsValue({ group_id: undefined });
+                taskForm.setFieldsValue({ group_id: undefined, question_id: undefined, question_link: undefined });
                 loadQuestionGroups(projectId);
               }}
             >
@@ -1120,19 +1138,60 @@ function ContentManagement() {
               ))}
             </Select>
           </Form.Item>
-          <Form.Item name="group_id" label="关联问题矩阵">
+          <Form.Item name="question_link" label="关联问题矩阵">
             <Select
               allowClear
-              placeholder={questionGroups.length > 0 ? '请选择要承接的代表问题' : '该项目暂无问题矩阵，可先去项目详情生成'}
+              placeholder={questionGroups.length > 0 ? '请选择问题组或具体承接问题' : '该项目暂无问题矩阵，可先去项目详情生成'}
               disabled={questionGroups.length === 0}
               showSearch
-              optionFilterProp="children"
+              optionFilterProp="label"
+              optionLabelProp="title"
+              listHeight={360}
+              dropdownStyle={{ maxHeight: 420, overflow: 'auto', minWidth: 520, maxWidth: 760 }}
             >
-              {questionGroups.map((group) => (
-                <Option key={group.id} value={group.id}>
-                  {`【${layerLabels[group.layer] || group.layer}】${group.representative_question || group.intent_name}`}
-                </Option>
-              ))}
+              {questionGroups.map((group) => {
+                const enabledQuestions = (group.questions || []).filter((question) => question.enabled !== false);
+                const groupTitle = `【${layerLabels[group.layer] || group.layer}】${group.representative_question || group.intent_name}`;
+                return (
+                  <OptGroup key={group.id} label={groupTitle}>
+                    <Option
+                      key={`group:${group.id}`}
+                      value={`group:${group.id}`}
+                      label={`只关联问题组 ${groupTitle}`}
+                      title={group.representative_question || group.intent_name}
+                    >
+                      <Space size={6} align="start" style={{ maxWidth: 720, whiteSpace: 'normal', lineHeight: '20px' }}>
+                        <Tag color="blue">问题组</Tag>
+                        <span>{`只关联代表问题：${group.representative_question || group.intent_name}`}</span>
+                      </Space>
+                    </Option>
+                    {enabledQuestions.map((question) => {
+                      const searchText = [
+                        groupTitle,
+                        question.question_text,
+                        question.question_type,
+                        question.tags,
+                        question.keyword_breakdown,
+                      ].filter(Boolean).join(' ');
+                      return (
+                        <Option
+                          key={`question:${question.id}`}
+                          value={`question:${question.id}`}
+                          label={searchText}
+                          title={question.question_text}
+                        >
+                          <Space direction="vertical" size={0} style={{ maxWidth: 720, whiteSpace: 'normal', lineHeight: '20px', padding: '2px 0' }}>
+                            <span>{question.question_text}</span>
+                            <Text type="secondary" style={{ fontSize: 12, lineHeight: '18px' }}>
+                              {`${layerLabels[group.layer] || group.layer} · ${question.question_type || '问题'} · P${question.priority ?? '-'}`}
+                            </Text>
+                          </Space>
+                        </Option>
+                      );
+                    })}
+                  </OptGroup>
+                );
+              })}
             </Select>
           </Form.Item>
           <Form.Item name="content_type" label="内容类型" rules={[{ required: true }]}>

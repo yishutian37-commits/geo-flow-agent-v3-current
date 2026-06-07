@@ -12,6 +12,7 @@ from app.api.v1.endpoints.content_drafts import create_content_draft
 from app.main import ensure_runtime_schema
 from app.main import repair_reserved_local_user_emails
 from app.api.v1.endpoints.baseline_runs import promote_monitoring_run_to_baseline
+from app.api.v1.endpoints.content_tasks import create_content_task, list_content_tasks
 from app.api.v1.endpoints.projects import (
     ContentMatrixRequest,
     _build_question_generation_strategy,
@@ -39,6 +40,7 @@ from app.models.user import User
 from app.schemas.baseline_run import BaselinePromoteRequest
 from app.schemas.brand import BrandCreate
 from app.schemas.content_draft import ContentDraftCreate
+from app.schemas.content_task import ContentTaskCreate
 from app.schemas.project import ProjectCreate
 from app.schemas.question import QuestionCreate, QuestionGroupCreate, QuestionUpdate
 from app.schemas.user import UserOut
@@ -112,6 +114,150 @@ def test_question_templates_stay_industry_aware_and_do_not_use_ai_platform_terms
         assert not any(term in joined.lower() for term in platform_terms)
         assert any(term in joined for term in case["expected_terms"])
         assert not any(term in joined for term in case["forbidden_terms"])
+
+
+@pytest.mark.asyncio
+async def test_content_task_can_link_specific_question_and_keep_group_context():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", future=True)
+    session_maker = async_sessionmaker(engine, expire_on_commit=False)
+
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+        async with session_maker() as db:
+            project = await ProjectService(db).create_project(
+                ProjectCreate(
+                    name="测试品牌",
+                    industry="local_service",
+                    region="杭州",
+                    budget=1000,
+                    target_ai_products="Kimi,DeepSeek",
+                    notes="本地服务测试项目",
+                ),
+                owner_id=None,
+            )
+            group = QuestionGroup(
+                project_id=project.id,
+                layer="verification_layer",
+                intent_name="资质核验",
+                representative_question="杭州本地服务机构怎么核验资质？",
+                priority=80,
+                status="active",
+            )
+            db.add(group)
+            await db.flush()
+            question = Question(
+                group_id=group.id,
+                question_text="杭州测试品牌是否具备公开可核验资质？",
+                question_type="brand_reputation",
+                tags="资质,核验",
+                priority=95,
+                enabled=True,
+            )
+            db.add(question)
+            await db.commit()
+
+            task = await create_content_task(
+                ContentTaskCreate(
+                    project_id=project.id,
+                    question_id=question.id,
+                    content_type="brand_intro",
+                    layer="verification_layer",
+                    priority="high",
+                ),
+                db=db,
+                user=SimpleNamespace(role="project_owner"),
+            )
+
+            assert task["question_id"] == str(question.id)
+            assert task["group_id"] == str(group.id)
+            assert task["representative_question"] == question.question_text
+            assert task["group_representative_question"] == group.representative_question
+
+            tasks = await list_content_tasks(
+                project_id=project.id,
+                status=None,
+                layer=None,
+                skip=0,
+                limit=100,
+                db=db,
+            )
+            assert len(tasks) == 1
+            assert tasks[0]["question_text"] == question.question_text
+            assert tasks[0]["question_priority"] == question.priority
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_content_task_rejects_question_group_mismatch():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", future=True)
+    session_maker = async_sessionmaker(engine, expire_on_commit=False)
+
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+        async with session_maker() as db:
+            project = await ProjectService(db).create_project(
+                ProjectCreate(
+                    name="测试品牌",
+                    industry="local_service",
+                    region="杭州",
+                    budget=1000,
+                    target_ai_products="Kimi,DeepSeek",
+                    notes="本地服务测试项目",
+                ),
+                owner_id=None,
+            )
+            first_group = QuestionGroup(
+                project_id=project.id,
+                layer="verification_layer",
+                intent_name="资质核验",
+                representative_question="杭州本地服务机构怎么核验资质？",
+                priority=80,
+                status="active",
+            )
+            second_group = QuestionGroup(
+                project_id=project.id,
+                layer="pool_layer",
+                intent_name="本地推荐",
+                representative_question="杭州本地服务机构哪家值得推荐？",
+                priority=70,
+                status="active",
+            )
+            db.add_all([first_group, second_group])
+            await db.flush()
+            question = Question(
+                group_id=second_group.id,
+                question_text="杭州测试品牌适合哪些本地服务场景？",
+                question_type="brand_reputation",
+                tags="场景,推荐",
+                priority=90,
+                enabled=True,
+            )
+            db.add(question)
+            await db.commit()
+
+            with pytest.raises(HTTPException) as exc_info:
+                await create_content_task(
+                    ContentTaskCreate(
+                        project_id=project.id,
+                        group_id=first_group.id,
+                        question_id=question.id,
+                        content_type="brand_intro",
+                        layer="verification_layer",
+                        priority="high",
+                    ),
+                    db=db,
+                    user=SimpleNamespace(role="project_owner"),
+                )
+
+            assert exc_info.value.status_code == 400
+            assert "不属于所选问题组" in exc_info.value.detail
+    finally:
+        await engine.dispose()
 
 
 @pytest.mark.asyncio
