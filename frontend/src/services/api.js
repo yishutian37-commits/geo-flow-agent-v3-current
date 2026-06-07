@@ -231,6 +231,7 @@ export const writingMemoryApi = {
   deleteFeedback: (id) => api.delete(`/writing-memory/feedbacks/${id}`),
   getProfile: (projectId) => api.get(`/writing-memory/profiles/${projectId}`),
   updateProfile: (projectId, data) => api.put(`/writing-memory/profiles/${projectId}`, data),
+  deleteProfile: (projectId) => api.delete(`/writing-memory/profiles/${projectId}`),
   foldProfile: (projectId, data = {}) => api.post(`/writing-memory/profiles/${projectId}/fold`, data, { timeout: AI_GENERATION_TIMEOUT }),
 };
 

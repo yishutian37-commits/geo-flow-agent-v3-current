@@ -320,6 +320,20 @@ async def update_profile(
     return _profile_to_dict(profile)
 
 
+@router.delete("/profiles/{project_id}")
+async def delete_profile(
+    project_id: UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(WritingProfile).where(WritingProfile.project_id == project_id))
+    profile = result.scalar_one_or_none()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Writing profile not found")
+    await db.delete(profile)
+    await db.commit()
+    return {"message": "Deleted"}
+
+
 @router.post("/profiles/{project_id}/fold")
 async def fold_profile(
     project_id: UUID,
@@ -375,12 +389,13 @@ async def fold_profile(
     system_prompt = """你是一位写作风格分析专家。分析用户反馈记录，生成结构化行文画像。
 请参考提示词评估/重写的原则：优先吸收可复用、跨稿件成立的结构性信号；不要把单次样例里的措辞机械复制成长期规则；如果原始反馈和“优化后重写提示词”冲突，以优化后重写提示词和长期规则为准。
 不得新增未经确认的品牌事实、资质、价格、案例、证书编号或绝对化承诺。
+所有字段值必须使用简体中文归纳表达；即使反馈记录里包含英文，也要翻译或改写成中文。除了 JSON key 之外，不要输出英文短语。
 只输出JSON，格式：
 {
-  "style_preferences": { "tone": "", "sentence_style": "", "banned_words": [] },
-  "title_preferences": { "must_contain": [], "preferred_style": "", "examples": [] },
-  "constraints": { "no_false_promises": true, "no_competitor_bashing": true, "price_disclaimer": "", "accuracy_required": [] },
-  "platform_habits": { "知乎": { "word_count": {"min": 0, "max": 0}, "style": "", "emoji_level": "", "formatting": "" } }
+  "style_preferences": { "tone": "自然、口语化，避免官方宣传腔", "sentence_style": "短句为主，主动语态，少用空泛套话", "banned_words": ["第一", "最专业"] },
+  "title_preferences": { "must_contain": ["品牌名", "地区词"], "preferred_style": "搜索友好、克制、不标题党", "examples": ["包头无人机培训机构怎么选？"] },
+  "constraints": { "no_false_promises": true, "no_competitor_bashing": true, "price_disclaimer": "价格以官方最新确认为准", "accuracy_required": ["资质", "证书编号", "地址"] },
+  "platform_habits": { "知乎": { "word_count": {"min": 1500, "max": 3000}, "style": "经验分享、证据充分", "emoji_level": "低", "formatting": "分段清晰，必要时使用小标题" } }
 }"""
     user_prompt = f"""项目：{project.name}
 行业：{project.industry}

@@ -19,9 +19,12 @@ class ContentTaskBase(BaseModel):
 class ContentTaskCreate(ContentTaskBase):
     project_id: UUID
     group_id: Optional[UUID] = None
+    question_id: Optional[UUID] = None
 
 
 class ContentTaskUpdate(BaseModel):
+    group_id: Optional[UUID] = None
+    question_id: Optional[UUID] = None
     content_type: Optional[str] = Field(None, max_length=100)
     layer: Optional[str] = Field(None, max_length=50)
     priority: Optional[str] = Field(None, max_length=20)
@@ -43,6 +46,7 @@ class ContentTaskOut(ContentTaskBase):
     id: UUID
     project_id: UUID
     group_id: Optional[UUID] = None
+    question_id: Optional[UUID] = None
     assignee: Optional[UUID] = None
     actual_token_cost: Optional[float] = None
     actual_api_cost: Optional[float] = None

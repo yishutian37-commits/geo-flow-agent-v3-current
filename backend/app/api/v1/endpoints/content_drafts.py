@@ -14,7 +14,7 @@ from app.models.content_draft import ContentDraft
 from app.models.content_task import ContentTask
 from app.models.brand_fact import BrandFact
 from app.models.publish_record import PublishRecord
-from app.models.question import QuestionGroup
+from app.models.question import Question, QuestionGroup
 from app.models.writing_memory import ContentFeedback, WritingProfile
 from app.models.compliance_check import ComplianceCheck
 from app.models.user import User
@@ -271,6 +271,10 @@ async def generate_draft(
     active_rules = list(feedback_result.scalars().all())
 
     question_context = {}
+    linked_question = None
+    if task.question_id:
+        question_result = await db.execute(select(Question).where(Question.id == task.question_id))
+        linked_question = question_result.scalar_one_or_none()
     if task.group_id:
         group_result = await db.execute(select(QuestionGroup).where(QuestionGroup.id == task.group_id))
         group = group_result.scalar_one_or_none()
@@ -283,6 +287,20 @@ async def generate_draft(
             }
 
     # 初始化 ProductionAgent 并调用 LLM
+    if linked_question:
+        question_context.update({
+            "具体承接问题": linked_question.question_text,
+            "问题类型": linked_question.question_type,
+            "问题标签": linked_question.tags,
+            "关键词拆解": linked_question.keyword_breakdown,
+            "问题公式": linked_question.question_formula,
+            "商业价值": linked_question.business_value,
+            "证据支撑": linked_question.evidence_support,
+            "内容建议": linked_question.content_actionability,
+            "推荐发布平台": linked_question.recommended_platforms,
+            "问题优先级": linked_question.priority,
+        })
+
     agent = ProductionAgent()
 
     # 组装 Prompt
