@@ -89,6 +89,51 @@ def test_vision_helpers_select_visual_model_and_extract_raw_text():
     assert service._extract_json_object(service._extract_llm_response_text(response))["ok"] is True
 
 
+def test_vision_helpers_select_minimax_m3_and_reject_wenxin_ui_noise():
+    service = WebBridgeService()
+    minimax_m3 = SimpleNamespace(
+        provider="custom",
+        model="minimaxm3",
+        name="minimaxm3",
+        description="",
+        tags=[],
+        api_key="key",
+    )
+    registry = SimpleNamespace(
+        get_default_model=lambda: minimax_m3,
+        list_models=lambda active_only=True, configured_only=True: [minimax_m3],
+    )
+
+    assert service._select_vision_model_config(registry) is minimax_m3
+    assert not service._looks_like_answer("深度分析需求并解答，你需要什么帮助？\n文心 5.1 快速\n内容由AI生成，仅供参考，请仔细甄别\n参考\n0")
+    assert service._looks_like_answer("第一推荐：蒙霁空天智能（青山区）。该机构持有CAAC运营合格证，适合优先核验。")
+
+
+def test_vision_model_manual_capability_overrides_name_guessing():
+    service = WebBridgeService()
+    manually_enabled = SimpleNamespace(
+        provider="custom",
+        model="private-router-model-a",
+        name="内部转发模型",
+        description="",
+        tags=[],
+        api_key="key",
+        supports_vision=True,
+    )
+    manually_disabled = SimpleNamespace(
+        provider="openai",
+        model="gpt-4o",
+        name="GPT-4o",
+        description="",
+        tags=["vision"],
+        api_key="key",
+        supports_vision=False,
+    )
+
+    assert service._looks_like_vision_model(manually_enabled) is True
+    assert service._looks_like_vision_model(manually_disabled) is False
+
+
 class UnsentQuestionWebBridgeService(FakeWebBridgeService):
     async def _ensure_available(self):
         return None
