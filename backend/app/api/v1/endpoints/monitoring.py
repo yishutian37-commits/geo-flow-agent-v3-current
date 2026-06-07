@@ -240,6 +240,49 @@ def _split_aliases(value: Optional[str]) -> list[str]:
     return [item.strip() for item in re.split(r"[,，、/;；\n\r]+", value or "") if item.strip()]
 
 
+def _derive_brand_aliases(term: str) -> list[str]:
+    """从公司全称派生常见短称，避免回答只写品牌短名时漏判。"""
+    raw = str(term or "").strip()
+    if not raw:
+        return []
+    variants = {raw}
+    no_space = re.sub(r"\s+", "", raw)
+    if no_space:
+        variants.add(no_space)
+
+    for value in list(variants):
+        without_brackets = re.sub(r"[（(][^）)]{1,20}[）)]", "", value).strip()
+        if without_brackets:
+            variants.add(without_brackets)
+        suffix_removed = re.sub(
+            r"(?:"
+            r"科技发展|智能科技|信息科技|网络科技|教育科技|文化传媒|"
+            r"科技|教育|传媒|文化|咨询|服务|集团|控股|实业|商贸"
+            r")?(?:股份有限公司|有限责任公司|有限公司|公司)$",
+            "",
+            without_brackets or value,
+        ).strip()
+        if suffix_removed:
+            variants.add(suffix_removed)
+        bracket_suffix_removed = re.sub(
+            r"(?:"
+            r"科技发展|智能科技|信息科技|网络科技|教育科技|文化传媒|"
+            r"科技|教育|传媒|文化|咨询|服务|集团|控股|实业|商贸"
+            r")?(?:股份有限公司|有限责任公司|有限公司|公司)$",
+            "",
+            value,
+        ).strip()
+        if bracket_suffix_removed:
+            variants.add(bracket_suffix_removed)
+
+    cleaned = []
+    for value in variants:
+        value = re.sub(r"\s+", "", value).strip(" -_·，,。；;：:")
+        if len(value) >= 3 and value not in cleaned:
+            cleaned.append(value)
+    return sorted(cleaned, key=len, reverse=True)
+
+
 def _brand_terms(project: Optional[Project], brands: list[Brand]) -> list[str]:
     terms = [project.name if project else ""]
     for brand in brands:
@@ -248,8 +291,9 @@ def _brand_terms(project: Optional[Project], brands: list[Brand]) -> list[str]:
     seen = []
     for term in terms:
         term = str(term or "").strip()
-        if term and term not in seen:
-            seen.append(term)
+        for alias in _derive_brand_aliases(term):
+            if alias and alias not in seen:
+                seen.append(alias)
     return seen
 
 
