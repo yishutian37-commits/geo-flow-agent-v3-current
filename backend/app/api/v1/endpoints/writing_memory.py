@@ -9,6 +9,7 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.models.experience_skill import ExperienceSkillSuggestion
 from app.models.project import Project
 from app.models.writing_memory import ContentFeedback, WritingProfile
 from app.prompts.templates import render_prompt_template
@@ -62,6 +63,55 @@ def _feedback_to_dict(item: ContentFeedback) -> dict:
         "is_folded": bool(item.is_folded),
         "created_at": item.created_at.isoformat() if item.created_at else None,
     }
+
+
+def _skill_name_from_feedback(data: ContentFeedbackCreate, analysis: Dict[str, str]) -> str:
+    category = (analysis.get("rule_category") or data.rule_category or "写作经验").strip()
+    scene = {
+        "标题偏好": "标题",
+        "语言风格": "语言风格",
+        "事实合规": "事实合规",
+        "平台适配": "平台适配",
+        "内容结构": "内容结构",
+        "证据补齐": "证据补齐",
+    }.get(category, category)
+    return f"{scene}经验"[:200]
+
+
+def _build_feedback_skill_suggestion(
+    project: Project,
+    feedback: ContentFeedback,
+    data: ContentFeedbackCreate,
+    analysis: Dict[str, str],
+) -> Optional[ExperienceSkillSuggestion]:
+    rule_text = (analysis.get("rule_text") or "").strip()
+    diff_summary = (analysis.get("diff_summary") or "").strip()
+    suggestion_text = rule_text or diff_summary
+    if not suggestion_text:
+        return None
+    evidence_parts = []
+    if data.comment:
+        evidence_parts.append(f"原始反馈：{data.comment.strip()}")
+    if data.rule_text:
+        evidence_parts.append(f"原始规则：{data.rule_text.strip()}")
+    if diff_summary:
+        evidence_parts.append(f"本次重写提示词：{diff_summary}")
+    return ExperienceSkillSuggestion(
+        project_id=project.id,
+        suggested_scope="project",
+        industry=project.industry,
+        trigger_scene="article_writing",
+        skill_type="rule",
+        name=_skill_name_from_feedback(data, analysis),
+        suggestion_text=suggestion_text[:2000],
+        reason="由文章反馈自动提炼，需人工确认后才会进入后续文章生成。",
+        evidence="\n".join(evidence_parts)[:3000] if evidence_parts else None,
+        risk_note="该建议来自单次项目反馈，默认只沉淀为项目级技能；不要直接升级为行业或全局技能。",
+        source_type="feedback",
+        source_refs_json=_dumps({"feedback_id": str(feedback.id)}),
+        confidence=0.62,
+        status="pending",
+    )
 
 
 def _profile_to_dict(profile: Optional[WritingProfile]) -> Optional[dict]:
@@ -246,6 +296,10 @@ async def create_feedback(
         payload["rule_category"] = analysis["rule_category"]
     item = ContentFeedback(**payload)
     db.add(item)
+    await db.flush()
+    suggestion = _build_feedback_skill_suggestion(project, item, data, analysis)
+    if suggestion:
+        db.add(suggestion)
     await db.commit()
     await db.refresh(item)
     return _feedback_to_dict(item)

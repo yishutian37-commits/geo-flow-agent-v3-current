@@ -19,6 +19,7 @@ import {
   contentTasksApi,
   contentDraftsApi,
   projectsApi,
+  corpusItemsApi,
   writingMemoryApi,
   questionsApi,
   channelAccountsApi,
@@ -210,11 +211,23 @@ const parsePublishUrls = (text = '', targets = []) => {
   });
 };
 
+const formatTaskDueDate = (value) => {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '-';
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 function ContentManagement() {
   const [tasks, setTasks] = useState([]);
   const [drafts, setDrafts] = useState([]);
   const [projects, setProjects] = useState([]);
   const [questionGroups, setQuestionGroups] = useState([]);
+  const [knowledgeAssets, setKnowledgeAssets] = useState([]);
+  const [knowledgeAssetsLoading, setKnowledgeAssetsLoading] = useState(false);
   const [channelAccounts, setChannelAccounts] = useState([]);
   const [publishRecords, setPublishRecords] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -303,6 +316,23 @@ function ContentManagement() {
     }
   };
 
+  const loadKnowledgeAssets = async (projectId) => {
+    if (!projectId) {
+      setKnowledgeAssets([]);
+      return;
+    }
+    setKnowledgeAssetsLoading(true);
+    try {
+      const res = await corpusItemsApi.list({ project_id: projectId, limit: 200 });
+      setKnowledgeAssets(res.data || []);
+    } catch (error) {
+      setKnowledgeAssets([]);
+      message.error('加载项目知识资产失败');
+    } finally {
+      setKnowledgeAssetsLoading(false);
+    }
+  };
+
   const loadChannelAccounts = async () => {
     try {
       const res = await channelAccountsApi.list({ limit: 100 });
@@ -372,11 +402,13 @@ function ContentManagement() {
       group_id: undefined,
       question_id: undefined,
       question_link: undefined,
+      knowledge_asset_ids: [],
       content_type: 'brand_intro',
       layer: 'verification_layer',
       priority: 'medium',
     });
     loadQuestionGroups(defaultProjectId);
+    loadKnowledgeAssets(defaultProjectId);
     setTaskModalVisible(true);
   };
 
@@ -860,6 +892,27 @@ function ContentManagement() {
       ellipsis: true,
       render: (question, record) => question || record.group_intent_name || <Text type="secondary">未关联</Text>,
     },
+    {
+      title: '知识资产',
+      dataIndex: 'knowledge_assets',
+      key: 'knowledge_assets',
+      render: (assets) => {
+        const items = assets || [];
+        if (!items.length) {
+          return <Text type="secondary">自动推荐/未绑定</Text>;
+        }
+        return (
+          <Space wrap size={4}>
+            {items.slice(0, 3).map((asset) => (
+              <Tag key={asset.id} color="cyan">
+                {asset.title || asset.knowledge_layer || '知识资产'}
+              </Tag>
+            ))}
+            {items.length > 3 && <Tag>+{items.length - 3}</Tag>}
+          </Space>
+        );
+      },
+    },
     { title: '内容类型', dataIndex: 'content_type', key: 'content_type' },
     {
       title: '层级',
@@ -887,7 +940,17 @@ function ContentManagement() {
         <Tag color={statusColors[s] || 'default'}>{statusLabels[s] || s}</Tag>
       ),
     },
-    { title: '截止日期', dataIndex: 'due_date', key: 'due_date', render: (d) => d ? new Date(d).toLocaleDateString() : '-' },
+    {
+      title: '截止日期',
+      dataIndex: 'due_date',
+      key: 'due_date',
+      width: 132,
+      render: (d) => (
+        <span style={{ whiteSpace: 'nowrap' }}>
+          {formatTaskDueDate(d)}
+        </span>
+      ),
+    },
     {
       title: '操作',
       key: 'action',
@@ -1041,8 +1104,13 @@ function ContentManagement() {
       title: '链接',
       dataIndex: 'url',
       key: 'url',
+      width: 118,
       ellipsis: true,
-      render: (value) => value ? <a href={value} target="_blank" rel="noreferrer">打开</a> : '-',
+      render: (value) => value ? (
+        <a href={value} target="_blank" rel="noreferrer" style={{ whiteSpace: 'nowrap' }}>
+          打开链接
+        </a>
+      ) : '-',
     },
     {
       title: '操作',
@@ -1118,7 +1186,7 @@ function ContentManagement() {
       </Tabs>
 
       {/* 新建任务Modal */}
-      <Modal title="新建内容任务" open={taskModalVisible} onOk={() => taskForm.submit()} onCancel={() => setTaskModalVisible(false)} width={600}>
+      <Modal title="新建内容任务" open={taskModalVisible} onOk={() => taskForm.submit()} onCancel={() => setTaskModalVisible(false)} width={760}>
         <Form form={taskForm} layout="vertical" onFinish={handleCreateTask}>
           <Form.Item name="project_id" label="所属项目" rules={[{ required: true, message: '请选择项目' }]}>
             <Select
@@ -1127,8 +1195,14 @@ function ContentManagement() {
               showSearch
               optionFilterProp="children"
               onChange={(projectId) => {
-                taskForm.setFieldsValue({ group_id: undefined, question_id: undefined, question_link: undefined });
+                taskForm.setFieldsValue({
+                  group_id: undefined,
+                  question_id: undefined,
+                  question_link: undefined,
+                  knowledge_asset_ids: [],
+                });
                 loadQuestionGroups(projectId);
+                loadKnowledgeAssets(projectId);
               }}
             >
               {projects.map((project) => (
@@ -1190,6 +1264,49 @@ function ContentManagement() {
                       );
                     })}
                   </OptGroup>
+                );
+              })}
+            </Select>
+          </Form.Item>
+          <Form.Item
+            name="knowledge_asset_ids"
+            label="关联项目知识资产"
+            extra="可不选。留空时，系统会按关联问题的知识需求自动推荐；手动选择后会优先使用你选中的资料。"
+          >
+            <Select
+              mode="multiple"
+              allowClear
+              loading={knowledgeAssetsLoading}
+              disabled={knowledgeAssetsLoading || knowledgeAssets.length === 0}
+              placeholder={knowledgeAssets.length > 0 ? '选择可用于本次写作的知识资产' : '该项目暂无知识资产，可先到项目知识库导入资料'}
+              optionFilterProp="label"
+              listHeight={320}
+              dropdownStyle={{ maxHeight: 380, overflow: 'auto', minWidth: 520, maxWidth: 760 }}
+            >
+              {knowledgeAssets.map((asset) => {
+                const label = [
+                  asset.title,
+                  asset.content,
+                  asset.tags,
+                  asset.knowledge_layer,
+                  asset.business_use,
+                  asset.evidence_level,
+                ].filter(Boolean).join(' ');
+                return (
+                  <Option key={asset.id} value={asset.id} label={label}>
+                    <Space direction="vertical" size={0} style={{ maxWidth: 720, whiteSpace: 'normal', lineHeight: '20px', padding: '2px 0' }}>
+                      <Space wrap size={4}>
+                        <Text strong>{asset.title || '未命名知识资产'}</Text>
+                        <Tag color="blue">{asset.knowledge_layer || 'other'}</Tag>
+                        <Tag color={asset.evidence_level === 'verified' || asset.evidence_level === 'official' ? 'green' : 'default'}>
+                          {asset.evidence_level || 'unverified'}
+                        </Tag>
+                      </Space>
+                      <Text type="secondary" style={{ fontSize: 12, lineHeight: '18px' }}>
+                        {String(asset.content || '').slice(0, 80)}
+                      </Text>
+                    </Space>
+                  </Option>
                 );
               })}
             </Select>

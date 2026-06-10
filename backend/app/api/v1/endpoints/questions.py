@@ -52,7 +52,10 @@ def _question_to_dict(question: Question) -> dict:
         "question_type": question.question_type,
         "tags": question.tags,
         "keyword_breakdown": question.keyword_breakdown,
+        "keyword_layer": question.keyword_layer,
         "question_formula": question.question_formula,
+        "knowledge_need": question.knowledge_need,
+        "search_asset_type": question.search_asset_type,
         "business_value": question.business_value,
         "evidence_support": question.evidence_support,
         "content_actionability": question.content_actionability,
@@ -219,7 +222,10 @@ async def create_question(
         question_type=data.question_type,
         tags=data.tags,
         keyword_breakdown=data.keyword_breakdown,
+        keyword_layer=data.keyword_layer,
         question_formula=data.question_formula,
+        knowledge_need=data.knowledge_need,
+        search_asset_type=data.search_asset_type,
         business_value=data.business_value,
         evidence_support=data.evidence_support,
         content_actionability=data.content_actionability,
@@ -249,6 +255,8 @@ async def create_question(
 async def list_questions(
     group_id: Optional[UUID] = Query(None),
     sample_policy: Optional[str] = Query(None),
+    keyword_layer: Optional[str] = Query(None),
+    search_asset_type: Optional[str] = Query(None),
     enabled: Optional[bool] = Query(None),
     db: AsyncSession = Depends(get_db)
 ):
@@ -259,6 +267,10 @@ async def list_questions(
         filters.append(Question.group_id == group_id)
     if sample_policy:
         filters.append(Question.sample_policy == sample_policy)
+    if keyword_layer:
+        filters.append(Question.keyword_layer == keyword_layer)
+    if search_asset_type:
+        filters.append(Question.search_asset_type == search_asset_type)
     if enabled is not None:
         filters.append(Question.enabled == enabled)
     if filters:

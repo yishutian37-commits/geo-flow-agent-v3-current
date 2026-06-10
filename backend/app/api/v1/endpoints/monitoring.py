@@ -17,6 +17,8 @@ from app.core.auth import require_roles
 from app.core.database import get_db
 from app.models.brand import Brand
 from app.models.content_task import ContentTask
+from app.models.corpus_item import CorpusItem
+from app.models.experience_skill import ExperienceSkillSuggestion
 from app.models.model_target import ModelTarget
 from app.models.monitoring import MonitoringRun, MonitoringSample
 from app.models.project import Project
@@ -44,6 +46,13 @@ class SampleContentTaskRequest(BaseModel):
     layer: Optional[str] = Field(None, max_length=50)
     priority: Optional[str] = Field(None, max_length=20)
     dedupe: bool = True
+
+
+class SampleReviewKnowledgeRequest(BaseModel):
+    title: Optional[str] = Field(default=None, max_length=500)
+    notes: Optional[str] = Field(default=None, max_length=2000)
+    reusable_scope: str = Field(default="project", max_length=100)
+    include_answer: bool = True
 
 
 def _run_to_dict(run, sample_count: int = 0, target_names: Optional[dict[str, str]] = None) -> dict:
@@ -225,6 +234,122 @@ def _default_task_type_from_sample(question: Question, target: Optional[ModelTar
     return f"{prefix}｜{platform}｜{text}"[:100]
 
 
+def _yes_no(value: bool) -> str:
+    return "是" if value else "否"
+
+
+def _truncate_text(value: Optional[str], limit: int = 3000) -> str:
+    text = str(value or "").strip()
+    if len(text) <= limit:
+        return text
+    return text[:limit].rstrip() + "..."
+
+
+def _build_review_knowledge_content(
+    sample: MonitoringSample,
+    run: MonitoringRun,
+    question: Question,
+    target: Optional[ModelTarget],
+    project: Optional[Project],
+    payload: SampleReviewKnowledgeRequest,
+    source_assets: Optional[list[SourceAsset]] = None,
+) -> str:
+    sample_data = _sample_to_dict(sample, source_assets)
+    sources = sample_data.get("sources") or []
+    analysis = sample_data.get("analysis") or {}
+    sampled_at = sample.sampled_at.isoformat() if sample.sampled_at else ""
+    lines = [
+        f"项目：{project.name if project else run.project_id}",
+        f"AI平台：{target.product_name if target else '未知平台'}",
+        f"问题：{question.question_text}",
+        f"检测时间：{sampled_at}",
+        f"品牌提及：{_yes_no(bool(sample.brand_mentioned))}",
+        f"推荐状态：{'已推荐' if sample.recommended else '未推荐'}",
+        f"可识别信息来源数：{len(sources)}",
+    ]
+    if sample.position is not None:
+        lines.append(f"推荐位置：{sample.position}")
+    if sample.list_length is not None:
+        lines.append(f"候选列表长度：{sample.list_length}")
+    if analysis.get("sentiment"):
+        lines.append(f"情绪判断：{analysis.get('sentiment')}")
+    basis = analysis.get("judgment_basis")
+    if isinstance(basis, list) and basis:
+        lines.append("判断依据：")
+        lines.extend(f"- {item}" for item in basis[:8])
+    if payload.notes:
+        lines.append("")
+        lines.append(f"人工复盘备注：{payload.notes.strip()}")
+    if sources:
+        lines.append("")
+        lines.append("AI 回答中的信息来源：")
+        for source in sources[:20]:
+            title = source.get("title") or source.get("url") or "未命名来源"
+            url = source.get("url") or ""
+            category = source.get("category_label") or source.get("category") or "未分类"
+            lines.append(f"- [{category}] {title} {url}".strip())
+    if payload.include_answer and sample.answer_text:
+        lines.append("")
+        lines.append("AI 原始回答摘录：")
+        lines.append(_truncate_text(sample.answer_text, 3000))
+    return "\n".join(lines).strip()
+
+
+def _build_review_skill_suggestion(
+    *,
+    sample: MonitoringSample,
+    run: MonitoringRun,
+    question: Question,
+    target: Optional[ModelTarget],
+    project: Optional[Project],
+    payload: SampleReviewKnowledgeRequest,
+    review_item: CorpusItem,
+) -> ExperienceSkillSuggestion:
+    platform_name = target.product_name if target else "AI平台"
+    if not sample.brand_mentioned:
+        action = "补充能让品牌进入候选答案的基础说明、公开资料页和本地/品类场景证据"
+    elif sample.brand_mentioned and not sample.recommended:
+        action = "补充推荐理由、权威信源、案例证据和对比维度，提升从提及到推荐的说服力"
+    else:
+        action = "复用当前回答里的有效证据结构，继续扩展同类问题的内容覆盖"
+
+    notes = (payload.notes or "").strip()
+    note_text = f"；人工备注：{notes}" if notes else ""
+    suggestion_text = (
+        f"针对「{question.question_text}」在 {platform_name} 的检测结果，后续内容优化建议："
+        f"{action}{note_text}。"
+    )
+    reason = (
+        f"本次检测品牌提及={_yes_no(bool(sample.brand_mentioned))}，"
+        f"推荐状态={'已推荐' if sample.recommended else '未推荐'}，"
+        f"可识别信息来源数={sample.explicit_citations or 0}。"
+    )
+    source_refs = {
+        "sample_id": str(sample.id),
+        "run_id": str(run.id),
+        "question_id": str(question.id),
+        "review_item_id": str(review_item.id),
+        "platform": platform_name,
+    }
+    scope = payload.reusable_scope if payload.reusable_scope in {"project", "industry", "global"} else "project"
+    return ExperienceSkillSuggestion(
+        project_id=run.project_id,
+        suggested_scope=scope,
+        industry=(project.industry if project else None),
+        trigger_scene="monitoring_review",
+        skill_type="workflow",
+        name=f"监测复盘：{question.question_text[:60]}",
+        suggestion_text=suggestion_text[:4000],
+        reason=reason[:2000],
+        evidence=_truncate_text(sample.answer_text, 1800),
+        risk_note="来自单条监测样本，只能作为优化建议；确认前不要上升为行业或全局规则。",
+        source_type="monitoring_review",
+        source_refs_json=json.dumps(source_refs, ensure_ascii=False),
+        confidence=0.58,
+        status="pending",
+    )
+
+
 async def _sample_counts(db: AsyncSession, run_ids: list[str]) -> dict[str, int]:
     if not run_ids:
         return {}
@@ -240,6 +365,49 @@ def _split_aliases(value: Optional[str]) -> list[str]:
     return [item.strip() for item in re.split(r"[,，、/;；\n\r]+", value or "") if item.strip()]
 
 
+def _derive_brand_aliases(term: str) -> list[str]:
+    """从公司全称派生常见短称，避免回答只写品牌短名时漏判。"""
+    raw = str(term or "").strip()
+    if not raw:
+        return []
+    variants = {raw}
+    no_space = re.sub(r"\s+", "", raw)
+    if no_space:
+        variants.add(no_space)
+
+    for value in list(variants):
+        without_brackets = re.sub(r"[（(][^）)]{1,20}[）)]", "", value).strip()
+        if without_brackets:
+            variants.add(without_brackets)
+        suffix_removed = re.sub(
+            r"(?:"
+            r"科技发展|智能科技|信息科技|网络科技|教育科技|文化传媒|"
+            r"科技|教育|传媒|文化|咨询|服务|集团|控股|实业|商贸"
+            r")?(?:股份有限公司|有限责任公司|有限公司|公司)$",
+            "",
+            without_brackets or value,
+        ).strip()
+        if suffix_removed:
+            variants.add(suffix_removed)
+        bracket_suffix_removed = re.sub(
+            r"(?:"
+            r"科技发展|智能科技|信息科技|网络科技|教育科技|文化传媒|"
+            r"科技|教育|传媒|文化|咨询|服务|集团|控股|实业|商贸"
+            r")?(?:股份有限公司|有限责任公司|有限公司|公司)$",
+            "",
+            value,
+        ).strip()
+        if bracket_suffix_removed:
+            variants.add(bracket_suffix_removed)
+
+    cleaned = []
+    for value in variants:
+        value = re.sub(r"\s+", "", value).strip(" -_·，,。；;：:")
+        if len(value) >= 3 and value not in cleaned:
+            cleaned.append(value)
+    return sorted(cleaned, key=len, reverse=True)
+
+
 def _brand_terms(project: Optional[Project], brands: list[Brand]) -> list[str]:
     terms = [project.name if project else ""]
     for brand in brands:
@@ -248,8 +416,9 @@ def _brand_terms(project: Optional[Project], brands: list[Brand]) -> list[str]:
     seen = []
     for term in terms:
         term = str(term or "").strip()
-        if term and term not in seen:
-            seen.append(term)
+        for alias in _derive_brand_aliases(term):
+            if alias and alias not in seen:
+                seen.append(alias)
     return seen
 
 
@@ -522,6 +691,91 @@ async def create_content_task_from_sample(
     return {
         "message": "Content task created",
         "task": _content_task_to_dict(task),
+    }
+
+
+@router.post("/samples/{sample_id}/review-knowledge")
+async def create_review_knowledge_from_sample(
+    sample_id: UUID,
+    data: SampleReviewKnowledgeRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles("strategist", "project_owner")),
+):
+    """把单条检测样本沉淀为项目知识库里的复盘资料。"""
+    result = await db.execute(
+        select(MonitoringSample, MonitoringRun, Question, ModelTarget, Project)
+        .join(MonitoringRun, MonitoringSample.run_id == MonitoringRun.id)
+        .join(Question, MonitoringSample.question_id == Question.id)
+        .join(ModelTarget, MonitoringRun.model_target_id == ModelTarget.id, isouter=True)
+        .join(Project, MonitoringRun.project_id == Project.id, isouter=True)
+        .where(MonitoringSample.id == sample_id)
+    )
+    row = result.one_or_none()
+    if not row:
+        raise HTTPException(status_code=404, detail="Monitoring sample not found")
+
+    sample, run, question, target, project = row
+    source_assets_result = await db.execute(
+        select(SourceAsset).where(SourceAsset.project_id == run.project_id, SourceAsset.status == "active")
+    )
+    source_assets = list(source_assets_result.scalars().all())
+    platform_name = target.product_name if target else "未知平台"
+    sampled_day = sample.sampled_at.strftime("%Y-%m-%d") if sample.sampled_at else "未记录日期"
+    default_title = f"{sampled_day} {platform_name} 检测复盘：{question.question_text[:80]}"
+    content = _build_review_knowledge_content(
+        sample=sample,
+        run=run,
+        question=question,
+        target=target,
+        project=project,
+        payload=data,
+        source_assets=source_assets,
+    )
+    item = CorpusItem(
+        project_id=run.project_id,
+        title=(data.title or default_title)[:500],
+        content=content,
+        source_type="monitoring_sample",
+        source_url=f"monitoring://samples/{sample.id}",
+        tags="复盘,监测,AI回答,推荐率,提及率",
+        knowledge_layer="review_data",
+        business_use="monitoring_review",
+        evidence_level="internal",
+        reusable_scope=(data.reusable_scope or "project")[:100],
+        contains_factual_claim=False,
+    )
+    db.add(item)
+    await db.flush()
+    db.add(
+        _build_review_skill_suggestion(
+            sample=sample,
+            run=run,
+            question=question,
+            target=target,
+            project=project,
+            payload=data,
+            review_item=item,
+        )
+    )
+    await db.commit()
+    await db.refresh(item)
+    return {
+        "message": "Review knowledge created",
+        "item": {
+            "id": str(item.id),
+            "project_id": str(item.project_id),
+            "title": item.title,
+            "content": item.content,
+            "source_type": item.source_type,
+            "source_url": item.source_url,
+            "tags": item.tags,
+            "knowledge_layer": item.knowledge_layer,
+            "business_use": item.business_use,
+            "evidence_level": item.evidence_level,
+            "reusable_scope": item.reusable_scope,
+            "contains_factual_claim": item.contains_factual_claim,
+            "created_at": item.created_at.isoformat() if item.created_at else None,
+        },
     }
 
 

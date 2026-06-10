@@ -136,13 +136,21 @@ function BrandFacts() {
   }, []);
 
   const openExtractModal = async () => {
+    if (!selectedProjectId) {
+      message.warning('请先选择项目');
+      return;
+    }
     setExtractModalVisible(true);
     setCorpusLoading(true);
     try {
-      const res = await corpusItemsApi.list({ contains_factual_claim: true, limit: 100 });
+      const res = await corpusItemsApi.list({
+        project_id: selectedProjectId,
+        contains_factual_claim: true,
+        limit: 100,
+      });
       setCorpusItems(res.data || []);
     } catch (error) {
-      message.error('加载语料库失败: ' + (error.response?.data?.detail || error.message));
+      message.error('加载项目知识库失败: ' + (error.response?.data?.detail || error.message));
     } finally {
       setCorpusLoading(false);
     }
@@ -230,7 +238,7 @@ function BrandFacts() {
 
   const handleExtract = async (values) => {
     if (!selectedCorpus) {
-      message.warning('请先选择一条语料');
+      message.warning('请先选择一条资料');
       return;
     }
     let brandId = selectedBrandId;
@@ -250,7 +258,7 @@ function BrandFacts() {
           value: values.value,
           public_wording: values.public_wording,
           fact_scope: values.fact_scope,
-          internal_note: `从语料提取: ${selectedCorpus.title || selectedCorpus.id}`,
+          internal_note: `从已保存资料提取: ${selectedCorpus.title || selectedCorpus.id}`,
         },
       ]);
       message.success('事实候选已提取，等待确认');
@@ -395,8 +403,13 @@ function BrandFacts() {
       title: '来源',
       dataIndex: 'source',
       key: 'source',
+      width: 170,
       ellipsis: true,
-      render: (s) => s || '-',
+      render: (s) => (
+        <span title={s || ''} style={{ whiteSpace: 'nowrap' }}>
+          {s || '-'}
+        </span>
+      ),
     },
     {
       title: '操作',
@@ -479,7 +492,7 @@ function BrandFacts() {
               </Button>
             </Popconfirm>
             <Button icon={<ImportOutlined />} onClick={openExtractModal}>
-              从语料提取
+              从已保存资料提取
             </Button>
             <Button icon={<PlusOutlined />} onClick={() => setIsModalVisible(true)}>
               手动添加事实
@@ -600,9 +613,9 @@ function BrandFacts() {
         </Form>
       </Modal>
 
-      {/* 从语料提取Modal */}
+      {/* 编辑事实Modal */}
       <Modal
-        title="从语料库提取事实"
+        title="编辑品牌事实"
         open={editModalVisible}
         onOk={() => editForm.submit()}
         onCancel={() => setEditModalVisible(false)}
@@ -689,7 +702,7 @@ function BrandFacts() {
       </Modal>
 
       <Modal
-        title="从语料库提取事实"
+        title="从已保存资料提取事实"
         open={extractModalVisible}
         onCancel={() => {
           setExtractModalVisible(false);
@@ -703,7 +716,7 @@ function BrandFacts() {
           {!selectedCorpus ? (
             <div>
               <Paragraph type="secondary">
-                选择一条标记为"含事实声明"的语料，系统将基于其内容生成事实候选（draft状态，需客户确认）。
+                选择一条当前项目下标记为“可提取事实”的企业资料，系统将基于其内容生成事实候选（draft状态，需客户确认）。
               </Paragraph>
               <List
                 size="small"
@@ -720,7 +733,7 @@ function BrandFacts() {
                     <List.Item.Meta
                       title={
                         <Space>
-                          <Text strong>{item.title || '未命名语料'}</Text>
+                          <Text strong>{item.title || '未命名资料'}</Text>
                           {item.contains_factual_claim && (
                             <Badge color="red" text="含事实声明" />
                           )}
@@ -734,19 +747,19 @@ function BrandFacts() {
                     />
                   </List.Item>
                 )}
-                locale={{ emptyText: '暂无含事实声明的语料，请先在语料库中录入内容并标记 contains_factual_claim=true' }}
+                locale={{ emptyText: '当前项目暂无可提取资料，请先到左侧“项目知识库”新增资料，并勾选“包含可对外核验的事实声明”。' }}
               />
             </div>
           ) : (
             <div>
               <Card size="small" style={{ marginBottom: 16 }}>
-                <Paragraph type="secondary">来源语料</Paragraph>
-                <Text strong>{selectedCorpus.title || '未命名语料'}</Text>
+                <Paragraph type="secondary">来源资料</Paragraph>
+                <Text strong>{selectedCorpus.title || '未命名资料'}</Text>
                 <Paragraph ellipsis={{ rows: 3 }} style={{ marginTop: 8 }}>
                   {selectedCorpus.content}
                 </Paragraph>
                 <Button type="link" size="small" onClick={() => setSelectedCorpus(null)}>
-                  ← 重新选择语料
+                  ← 重新选择资料
                 </Button>
               </Card>
 
@@ -762,7 +775,7 @@ function BrandFacts() {
                   </Select>
                 </Form.Item>
                 <Form.Item name="value" label="事实值" rules={[{ required: true }]}>
-                  <TextArea rows={3} placeholder="从语料中提取的事实内容" />
+                  <TextArea rows={3} placeholder="从资料中提取的事实内容" />
                 </Form.Item>
                 <Form.Item name="public_wording" label="公开口径">
                   <TextArea rows={2} placeholder="对外公开使用的表述（可选）" />

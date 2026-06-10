@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_, update
+from sqlalchemy import select, and_, or_, update
 
 from app.core.auth import require_roles
 from app.core.database import get_db
@@ -12,9 +12,11 @@ from app.models.brand import Brand
 from app.models.project import Project
 from app.models.content_draft import ContentDraft
 from app.models.content_task import ContentTask
+from app.models.corpus_item import CorpusItem
 from app.models.brand_fact import BrandFact
 from app.models.publish_record import PublishRecord
 from app.models.question import Question, QuestionGroup
+from app.models.experience_skill import ExperienceSkill
 from app.models.writing_memory import ContentFeedback, WritingProfile
 from app.models.compliance_check import ComplianceCheck
 from app.models.user import User
@@ -23,6 +25,23 @@ from app.agents.production_agent import ProductionAgent
 import json
 
 router = APIRouter()
+
+
+def _decode_knowledge_asset_ids(value: Optional[str]) -> List[str]:
+    if not value:
+        return []
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(parsed, list):
+        return []
+    ids = []
+    for item in parsed:
+        text = str(item).strip()
+        if text and text not in ids:
+            ids.append(text)
+    return ids
 
 
 def _draft_to_dict(draft: ContentDraft) -> dict:
@@ -270,6 +289,40 @@ async def generate_draft(
     )
     active_rules = list(feedback_result.scalars().all())
 
+    skill_scenes = ["article_writing", "rewrite"]
+    skill_scope_filters = [
+        and_(ExperienceSkill.scope == "project", ExperienceSkill.project_id == task.project_id),
+        and_(ExperienceSkill.scope == "industry", ExperienceSkill.industry == project.industry),
+        ExperienceSkill.scope == "global",
+    ]
+    skills_result = await db.execute(
+        select(ExperienceSkill)
+        .where(
+            ExperienceSkill.status == "active",
+            ExperienceSkill.trigger_scene.in_(skill_scenes),
+            or_(*skill_scope_filters),
+        )
+        .order_by(ExperienceSkill.scope.asc(), ExperienceSkill.updated_at.desc())
+        .limit(30)
+    )
+    experience_skills = list(skills_result.scalars().all())
+
+    knowledge_assets = []
+    knowledge_asset_ids = _decode_knowledge_asset_ids(task.knowledge_asset_ids)
+    if knowledge_asset_ids:
+        assets_result = await db.execute(
+            select(CorpusItem).where(
+                CorpusItem.id.in_(knowledge_asset_ids),
+                CorpusItem.project_id == task.project_id,
+            )
+        )
+        assets_by_id = {str(item.id): item for item in assets_result.scalars().all()}
+        knowledge_assets = [
+            assets_by_id[item_id]
+            for item_id in knowledge_asset_ids
+            if item_id in assets_by_id
+        ]
+
     question_context = {}
     linked_question = None
     if task.question_id:
@@ -293,7 +346,10 @@ async def generate_draft(
             "问题类型": linked_question.question_type,
             "问题标签": linked_question.tags,
             "关键词拆解": linked_question.keyword_breakdown,
+            "关键词层": linked_question.keyword_layer,
             "问题公式": linked_question.question_formula,
+            "知识需求": linked_question.knowledge_need,
+            "推荐搜索资产": linked_question.search_asset_type,
             "商业价值": linked_question.business_value,
             "证据支撑": linked_question.evidence_support,
             "内容建议": linked_question.content_actionability,
@@ -314,6 +370,8 @@ async def generate_draft(
             writing_profile=writing_profile,
             active_rules=active_rules,
             question_context=question_context,
+            knowledge_assets=knowledge_assets,
+            experience_skills=experience_skills,
             feedback_context=req.feedback_context,
             source_draft_context=source_draft_context,
         )

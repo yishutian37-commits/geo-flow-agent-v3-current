@@ -15,6 +15,7 @@ from app.models.brand_fact import BrandFact
 from app.models.compliance_check import ComplianceCheck
 from app.models.content_draft import ContentDraft
 from app.models.content_task import ContentTask
+from app.models.experience_skill import ExperienceSkillSuggestion
 from app.models.project import Project
 from app.models.publish_record import PublishRecord
 from app.models.user import User
@@ -319,7 +320,67 @@ async def _validate_and_record_publish_check(
         checked_at=datetime.now(timezone.utc),
     )
     db.add(check)
+    await db.flush()
+    if validation.get("issues"):
+        await _create_publish_check_skill_suggestion(db, draft, task, check, validation)
     return validation
+
+
+async def _create_publish_check_skill_suggestion(
+    db: AsyncSession,
+    draft: ContentDraft,
+    task: ContentTask,
+    check: ComplianceCheck,
+    validation: dict,
+) -> None:
+    existing_result = await db.execute(
+        select(ExperienceSkillSuggestion).where(
+            ExperienceSkillSuggestion.project_id == task.project_id,
+            ExperienceSkillSuggestion.source_type == "publish_check",
+            ExperienceSkillSuggestion.source_refs_json.contains(str(draft.id)),
+        )
+    )
+    if existing_result.scalar_one_or_none():
+        return
+
+    project_result = await db.execute(select(Project).where(Project.id == task.project_id))
+    project = project_result.scalar_one_or_none()
+    issues = validation.get("issues") or []
+    issue_messages = [
+        str(item.get("message") or item.get("type") or item)
+        for item in issues
+        if item
+    ]
+    issue_summary = "；".join(issue_messages[:5]) or "存在发布检查风险"
+    high_count = int(validation.get("high_severity_issues") or 0)
+    warning_count = int(validation.get("warning_issues") or 0)
+    source_refs = {
+        "draft_id": str(draft.id),
+        "task_id": str(task.id),
+        "compliance_check_id": str(check.id),
+        "platform": draft.platform,
+    }
+    db.add(
+        ExperienceSkillSuggestion(
+            project_id=task.project_id,
+            suggested_scope="project",
+            industry=(project.industry if project else None),
+            trigger_scene="publish_check",
+            skill_type="rule",
+            name=f"发布检查经验：{draft.platform or '未知平台'}",
+            suggestion_text=(
+                f"平台「{draft.platform or '未知平台'}」发布前需要重点规避：{issue_summary}。"
+                "后续同类稿件生成和检查时，应提前弱化高风险表达、补充人工审核提示或调整发布版本。"
+            )[:4000],
+            reason=f"发布检查发现 {high_count} 个高风险项、{warning_count} 个提醒项。",
+            evidence=json.dumps(issues[:10], ensure_ascii=False),
+            risk_note="来自发布检查结果，仅作为平台适配经验建议；确认前不要升级为行业或全局规则。",
+            source_type="publish_check",
+            source_refs_json=json.dumps(source_refs, ensure_ascii=False),
+            confidence=0.6,
+            status="pending",
+        )
+    )
 
 
 async def _records_to_dicts(db: AsyncSession, records: list[PublishRecord]) -> list[dict]:

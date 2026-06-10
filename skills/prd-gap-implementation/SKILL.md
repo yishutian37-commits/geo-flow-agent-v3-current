@@ -1,6 +1,6 @@
 ---
 name: prd-gap-implementation
-description: 用于将 GEO Flow Agent 与 PRD 对照，识别未实现功能，排序优先级，执行迭代开发，每轮测试并输出完成报告。
+description: 当用户要求根据 GEO Flow Agent PRD 检查还有哪些没实现、按优先级继续补齐、每轮测试验证并汇报剩余缺口时使用。
 ---
 
 # PRD Gap Implementation

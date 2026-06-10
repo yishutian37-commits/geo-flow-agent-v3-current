@@ -154,6 +154,30 @@ AI_PLATFORM_TERM_RE = "|".join(
     re.escape(term.lower()) for term in sorted(AI_PLATFORM_TERMS, key=len, reverse=True)
 )
 
+ALLOWED_KEYWORD_LAYERS = {
+    "category",
+    "region",
+    "scenario",
+    "proof",
+    "conversion",
+    "brand",
+    "comparison",
+    "other",
+}
+
+ALLOWED_SEARCH_ASSET_TYPES = {
+    "official_site",
+    "qualification",
+    "case_page",
+    "media_report",
+    "faq",
+    "comparison",
+    "local_guide",
+    "contact_page",
+    "product_page",
+    "other",
+}
+
 
 class ContentMatrixRequest(BaseModel):
     replace_existing: bool = Field(False, description="是否取消当前项目下未开始的旧任务后重新生成")
@@ -411,6 +435,116 @@ def _stringify_question_meta(value: Any, limit: int = 1000) -> Optional[str]:
     return text or None
 
 
+def _normalize_keyword_layer(value: Any) -> Optional[str]:
+    text = _clean_text(value, 100)
+    lowered = text.lower()
+    if lowered in ALLOWED_KEYWORD_LAYERS:
+        return lowered
+    if re.search(r"品类|行业|类目|category", text, flags=re.I):
+        return "category"
+    if re.search(r"地域|地区|城市|本地|附近|region|geo|local", text, flags=re.I):
+        return "region"
+    if re.search(r"场景|用途|人群|需求|scenario|audience", text, flags=re.I):
+        return "scenario"
+    if re.search(r"证据|验证|资质|证书|合规|口碑|可信|proof|trust|qualification", text, flags=re.I):
+        return "proof"
+    if re.search(r"转化|价格|购买|报名|咨询|采购|地址|电话|conversion", text, flags=re.I):
+        return "conversion"
+    if re.search(r"品牌|主体|公司|brand", text, flags=re.I):
+        return "brand"
+    if re.search(r"对比|竞品|排名|优势|comparison|competitor", text, flags=re.I):
+        return "comparison"
+    return None
+
+
+def _normalize_search_asset_type(value: Any) -> Optional[str]:
+    text = _clean_text(value, 100)
+    lowered = text.lower()
+    if lowered in ALLOWED_SEARCH_ASSET_TYPES:
+        return lowered
+    if re.search(r"官网|官方网站|official", text, flags=re.I):
+        return "official_site"
+    if re.search(r"资质|证书|认证|许可|合规|qualification", text, flags=re.I):
+        return "qualification"
+    if re.search(r"案例|客户|项目|case", text, flags=re.I):
+        return "case_page"
+    if re.search(r"媒体|报道|新闻|稿件|media|news", text, flags=re.I):
+        return "media_report"
+    if re.search(r"问答|FAQ|常见问题|指南", text, flags=re.I):
+        return "faq"
+    if re.search(r"对比|测评|竞品|comparison", text, flags=re.I):
+        return "comparison"
+    if re.search(r"本地|地区|城市|local", text, flags=re.I):
+        return "local_guide"
+    if re.search(r"联系|地址|电话|报名|咨询|contact", text, flags=re.I):
+        return "contact_page"
+    if re.search(r"产品|服务|课程|方案|product", text, flags=re.I):
+        return "product_page"
+    return None
+
+
+def _infer_keyword_layer(question_text: str, layer: str, tags: str = "") -> str:
+    text = f"{question_text or ''} {tags or ''}"
+    if re.search(r"资质|证书|编号|合规|核验|真假|正规|靠谱吗|口碑|评价|案例|通过率|认证|许可", text, flags=re.I):
+        return "proof"
+    if re.search(r"价格|费用|收费|报价|购买|报名|咨询|地址|电话|联系|预约|采购|流程|售后|怎么做", text, flags=re.I):
+        return "conversion"
+    if re.search(r"对比|相比|排名|榜单|优势|测评|哪家更|哪个更|竞品", text, flags=re.I):
+        return "comparison"
+    if re.search(r"附近|本地|地区|城市|包头|天津|北京|上海|深圳|广州|成都|杭州|内蒙古", text, flags=re.I):
+        return "region"
+    if re.search(r"适合|场景|人群|用途|应用|需求|解决", text, flags=re.I):
+        return "scenario"
+    if re.search(r"品牌|公司|机构|主体|产品|服务", text, flags=re.I):
+        return "brand"
+    if layer == "verification_layer":
+        return "proof"
+    if layer == "conversion_layer":
+        return "conversion"
+    if layer == "weight_layer":
+        return "comparison"
+    return "category"
+
+
+def _default_question_bridge_meta(question_text: str, layer: str, tags: str = "") -> Dict[str, str]:
+    keyword_layer = _infer_keyword_layer(question_text, layer, tags)
+    mapping = {
+        "category": {
+            "knowledge_need": "需要品类定义、服务范围、适用对象和行业基础解释，帮助 AI 判断品牌是否能进入候选答案。",
+            "search_asset_type": "faq",
+        },
+        "region": {
+            "knowledge_need": "需要地区覆盖、服务边界、本地地址、本地案例和可公开核验的主体信息。",
+            "search_asset_type": "local_guide",
+        },
+        "scenario": {
+            "knowledge_need": "需要用户画像、使用场景、需求痛点、产品或服务匹配边界和真实案例。",
+            "search_asset_type": "faq",
+        },
+        "proof": {
+            "knowledge_need": "需要资质证书、证书编号、有效期、地址、案例、评价和官方核验入口等可验证证据。",
+            "search_asset_type": "qualification",
+        },
+        "conversion": {
+            "knowledge_need": "需要价格、服务内容、地址、联系方式、咨询或购买流程、交付周期和售后边界。",
+            "search_asset_type": "contact_page",
+        },
+        "brand": {
+            "knowledge_need": "需要品牌主体、公司简介、服务边界、公开资料来源和已确认品牌事实。",
+            "search_asset_type": "official_site",
+        },
+        "comparison": {
+            "knowledge_need": "需要可对比维度、竞品差异、案例、参数、价格区间、口碑和第三方来源。",
+            "search_asset_type": "comparison",
+        },
+        "other": {
+            "knowledge_need": "需要补充能够回答该问题的公开事实、证据来源和内容素材。",
+            "search_asset_type": "faq",
+        },
+    }
+    return {"keyword_layer": keyword_layer, **mapping.get(keyword_layer, mapping["other"])}
+
+
 def _default_question_meta(question_text: str, layer: str, tags: str = "") -> Dict[str, str]:
     text = question_text or ""
     if layer == "verification_layer":
@@ -632,7 +766,13 @@ def _coerce_question_groups(
                 tags = "，".join(_split_terms(raw_tags)) if isinstance(raw_tags, str) else "，".join(str(tag) for tag in raw_tags[:8]) if isinstance(raw_tags, list) else ""
                 focus = bool(item.get("focus") or item.get("important") or False)
                 keyword_breakdown = _stringify_question_meta(item.get("keyword_breakdown") or item.get("keywords"), 1200)
+                keyword_layer = _stringify_question_meta(item.get("keyword_layer") or item.get("keyword_level"), 100)
                 question_formula = _stringify_question_meta(item.get("question_formula") or item.get("formula"), 500)
+                knowledge_need = _stringify_question_meta(
+                    item.get("knowledge_need") or item.get("required_knowledge") or item.get("knowledge_assets"),
+                    1200,
+                )
+                search_asset_type = _stringify_question_meta(item.get("search_asset_type") or item.get("asset_type"), 100)
                 business_value = _stringify_question_meta(item.get("business_value") or item.get("commercial_value"), 100)
                 evidence_support = _stringify_question_meta(item.get("evidence_support") or item.get("required_facts") or item.get("evidence_need"), 1200)
                 content_actionability = _stringify_question_meta(item.get("content_actionability") or item.get("content_suggestion"), 1200)
@@ -645,7 +785,10 @@ def _coerce_question_groups(
                 tags = ""
                 focus = False
                 keyword_breakdown = None
+                keyword_layer = None
                 question_formula = None
+                knowledge_need = None
+                search_asset_type = None
                 business_value = None
                 evidence_support = None
                 content_actionability = None
@@ -655,12 +798,16 @@ def _coerce_question_groups(
                 continue
             seen_questions.add(q_text)
             defaults = _default_question_meta(q_text, layer, tags)
+            bridge_defaults = _default_question_bridge_meta(q_text, layer, tags)
             keyword_breakdown = keyword_breakdown or json.dumps({
                 "question_terms": _split_terms(q_text),
                 "tags": _split_terms(tags),
                 "layer": layer,
             }, ensure_ascii=False)
+            keyword_layer = _normalize_keyword_layer(keyword_layer) or bridge_defaults["keyword_layer"]
             question_formula = question_formula or defaults["question_formula"]
+            knowledge_need = knowledge_need or bridge_defaults["knowledge_need"]
+            search_asset_type = _normalize_search_asset_type(search_asset_type) or bridge_defaults["search_asset_type"]
             business_value = business_value or defaults["business_value"]
             evidence_support = evidence_support or defaults["evidence_support"]
             content_actionability = content_actionability or defaults["content_actionability"]
@@ -670,7 +817,10 @@ def _coerce_question_groups(
                 "question_type": question_type,
                 "tags": tags,
                 "keyword_breakdown": keyword_breakdown,
+                "keyword_layer": keyword_layer,
                 "question_formula": question_formula,
+                "knowledge_need": knowledge_need,
+                "search_asset_type": search_asset_type,
                 "business_value": business_value,
                 "evidence_support": evidence_support,
                 "content_actionability": content_actionability,
@@ -1326,7 +1476,10 @@ async def generate_question_bank(
                 question_type=question_data.get("question_type") or "brand_reputation",
                 tags=question_data.get("tags"),
                 keyword_breakdown=question_data.get("keyword_breakdown"),
+                keyword_layer=question_data.get("keyword_layer"),
                 question_formula=question_data.get("question_formula"),
+                knowledge_need=question_data.get("knowledge_need"),
+                search_asset_type=question_data.get("search_asset_type"),
                 business_value=question_data.get("business_value"),
                 evidence_support=question_data.get("evidence_support"),
                 content_actionability=question_data.get("content_actionability"),
@@ -1381,7 +1534,10 @@ async def generate_question_bank(
                         "question_type": q.question_type,
                         "tags": q.tags,
                         "keyword_breakdown": q.keyword_breakdown,
+                        "keyword_layer": q.keyword_layer,
                         "question_formula": q.question_formula,
+                        "knowledge_need": q.knowledge_need,
+                        "search_asset_type": q.search_asset_type,
                         "business_value": q.business_value,
                         "evidence_support": q.evidence_support,
                         "content_actionability": q.content_actionability,

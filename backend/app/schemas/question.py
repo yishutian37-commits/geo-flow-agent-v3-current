@@ -10,7 +10,10 @@ class QuestionBase(BaseModel):
     question_type: str = Field(default="brand_reputation", max_length=100)
     tags: Optional[str] = None
     keyword_breakdown: Optional[str] = None
+    keyword_layer: Optional[str] = Field(default=None, max_length=100)
     question_formula: Optional[str] = Field(default=None, max_length=500)
+    knowledge_need: Optional[str] = None
+    search_asset_type: Optional[str] = Field(default=None, max_length=100)
     business_value: Optional[str] = Field(default=None, max_length=100)
     evidence_support: Optional[str] = None
     content_actionability: Optional[str] = None
@@ -30,7 +33,10 @@ class QuestionUpdate(BaseModel):
     question_type: Optional[str] = Field(default=None, max_length=100)
     tags: Optional[str] = None
     keyword_breakdown: Optional[str] = None
+    keyword_layer: Optional[str] = Field(default=None, max_length=100)
     question_formula: Optional[str] = Field(default=None, max_length=500)
+    knowledge_need: Optional[str] = None
+    search_asset_type: Optional[str] = Field(default=None, max_length=100)
     business_value: Optional[str] = Field(default=None, max_length=100)
     evidence_support: Optional[str] = None
     content_actionability: Optional[str] = None

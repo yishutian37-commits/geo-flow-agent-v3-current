@@ -20,6 +20,7 @@ from app.models.sentiment import SentimentRecord
 from app.models.recommendation import Recommendation
 from app.models.user import User
 from app.models.writing_memory import ContentFeedback, WritingProfile
+from app.models.experience_skill import ExperienceSkill, ExperienceSkillSuggestion, ExperienceSkillVersion
 
 __all__ = [
     "Project",
@@ -47,4 +48,7 @@ __all__ = [
     "User",
     "ContentFeedback",
     "WritingProfile",
+    "ExperienceSkill",
+    "ExperienceSkillSuggestion",
+    "ExperienceSkillVersion",
 ]

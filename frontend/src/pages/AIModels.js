@@ -61,6 +61,10 @@ function AIModels() {
     return provider?.name || key;
   };
 
+  const modelSupportsVision = (record) => (
+    record?.supports_vision === true || (record?.tags || []).includes('vision')
+  );
+
   const handleOpenAdd = () => {
     setAddMode('preset');
     setSelectedProvider('deepseek');
@@ -70,6 +74,7 @@ function AIModels() {
       provider: 'deepseek',
       set_as_default: models.length === 0,
       context_length: 64000,
+      supports_vision: false,
     });
     setIsModalVisible(true);
   };
@@ -88,6 +93,7 @@ function AIModels() {
           output_price: values.output_price || 0,
           context_length: values.context_length || 4096,
           description: values.description || '自定义 OpenAI 兼容接口',
+          supports_vision: Boolean(values.supports_vision),
           set_as_default: values.set_as_default || false,
         };
       } else {
@@ -103,6 +109,7 @@ function AIModels() {
           output_price: values.output_price || 0,
           context_length: values.context_length || modelInfo?.context_length || 4096,
           description: values.description || '推荐预设模型',
+          supports_vision: Boolean(values.supports_vision),
           set_as_default: values.set_as_default || false,
         };
       }
@@ -127,6 +134,7 @@ function AIModels() {
       output_price: record.output_price_per_1k || 0,
       context_length: record.context_length || 4096,
       description: record.description || '',
+      supports_vision: modelSupportsVision(record),
       is_active: record.is_active !== false,
     });
     setEditModalVisible(true);
@@ -143,6 +151,7 @@ function AIModels() {
       if (values.output_price !== undefined) payload.output_price = parseFloat(values.output_price) || 0;
       if (values.context_length !== undefined) payload.context_length = parseInt(values.context_length, 10) || 4096;
       if (values.description !== undefined) payload.description = values.description;
+      if (values.supports_vision !== undefined) payload.supports_vision = values.supports_vision;
       if (values.is_active !== undefined) payload.is_active = values.is_active;
 
       await aiModelsApi.updateModel(editingModel.id, payload);
@@ -232,6 +241,19 @@ function AIModels() {
       render: (value) => `${Math.round((value || 0) / 1000)}K`,
     },
     {
+      title: '能力',
+      key: 'capabilities',
+      render: (_, record) => (
+        <Space wrap>
+          {modelSupportsVision(record) ? (
+            <Tag color="purple">图片理解</Tag>
+          ) : (
+            <Tag>文本</Tag>
+          )}
+        </Space>
+      ),
+    },
+    {
       title: '状态',
       dataIndex: 'is_active',
       key: 'is_active',
@@ -301,7 +323,7 @@ function AIModels() {
         onCancel={() => setIsModalVisible(false)}
         width={680}
       >
-        <Form form={form} layout="vertical" onFinish={handleAdd} initialValues={{ config_mode: 'preset', provider: 'deepseek', context_length: 64000 }}>
+        <Form form={form} layout="vertical" onFinish={handleAdd} initialValues={{ config_mode: 'preset', provider: 'deepseek', context_length: 64000, supports_vision: false }}>
           <Form.Item name="config_mode" label="配置方式">
             <Radio.Group
               optionType="button"
@@ -329,6 +351,7 @@ function AIModels() {
                       model: undefined,
                       base_url: '',
                       context_length: providerInfo?.models?.[0]?.context_length || 4096,
+                      supports_vision: false,
                     });
                   }}
                 >
@@ -338,7 +361,16 @@ function AIModels() {
                 </Select>
               </Form.Item>
               <Form.Item name="model" label="模型" rules={[{ required: true, message: '请选择模型' }]}>
-                <Select placeholder="选择模型">
+                <Select
+                  placeholder="选择模型"
+                  onChange={(value) => {
+                    const modelInfo = currentProviderModels.find((model) => model.id === value);
+                    form.setFieldsValue({
+                      context_length: modelInfo?.context_length || 4096,
+                      supports_vision: Boolean(modelInfo?.supports_vision),
+                    });
+                  }}
+                >
                   {currentProviderModels.map((model) => (
                     <Option key={model.id} value={model.id}>{model.name} ({model.id})</Option>
                   ))}
@@ -387,6 +419,13 @@ function AIModels() {
           <Form.Item name="description" label="备注">
             <Input.TextArea rows={2} placeholder="例如：公司统一转发接口、用于文章生成、低成本模型等" />
           </Form.Item>
+          <Form.Item
+            name="supports_vision"
+            valuePropName="checked"
+            extra="如果该接口支持图片/截图输入，请勾选。视觉监测会优先使用勾选过的模型。"
+          >
+            <Checkbox>支持图片理解（可用于视觉识别监测）</Checkbox>
+          </Form.Item>
           <Form.Item name="set_as_default" valuePropName="checked">
             <Checkbox>设为默认模型</Checkbox>
           </Form.Item>
@@ -431,6 +470,13 @@ function AIModels() {
           </Form.Item>
           <Form.Item name="description" label="备注">
             <Input.TextArea rows={2} />
+          </Form.Item>
+          <Form.Item
+            name="supports_vision"
+            valuePropName="checked"
+            extra="取消勾选后，该模型不会被视觉识别模式自动选中。"
+          >
+            <Checkbox>支持图片理解（可用于视觉识别监测）</Checkbox>
           </Form.Item>
           <Form.Item name="is_active" valuePropName="checked">
             <Checkbox>启用该模型</Checkbox>

@@ -8,6 +8,7 @@ from dataclasses import dataclass, field, asdict
 from uuid import UUID, uuid4
 import json
 import os
+import re
 
 from app.llm.providers import PRESET_PROVIDERS
 
@@ -29,6 +30,7 @@ class ModelConfig:
     context_length: int = 4096       # 上下文长度
     description: str = ""            # 描述
     tags: List[str] = field(default_factory=list)  # 标签: fast/cheap/reasoning/long-context
+    supports_vision: Optional[bool] = None  # 是否明确支持图片理解；None 表示按模型名自动判断
     created_at: str = ""             # 创建时间
 
     def to_dict(self, mask_api_key: bool = True) -> dict:
@@ -72,6 +74,7 @@ class ModelRegistry:
         for provider_key, provider_info in PRESET_PROVIDERS.items():
             for model_key, model_info in provider_info["models"].items():
                 config_id = f"{provider_key}:{model_key}"
+                tags = self._infer_tags(provider_key, model_key, model_info)
                 config = ModelConfig(
                     id=config_id,
                     provider=provider_key,
@@ -82,7 +85,8 @@ class ModelRegistry:
                     output_price_per_1k=model_info.get("output_price_per_1k", 0.0),
                     context_length=model_info.get("context_length", 4096),
                     description=f"{model_info['name']} | 上下文: {model_info.get('context_length', 4096)}",
-                    tags=self._infer_tags(provider_key, model_key, model_info),
+                    tags=tags,
+                    supports_vision=bool(model_info.get("supports_vision") or "vision" in tags),
                 )
                 self._models[config_id] = config
 
@@ -99,11 +103,16 @@ class ModelRegistry:
         if "turbo" in model.lower() or "fast" in model.lower():
             tags.append("fast")
         vision_markers = [
-            "vision", "visual", "image", "multimodal", "omni",
+            "vision", "visual", "image", "multimodal", "multi-modal", "omni",
+            "视觉", "图像", "图片", "多模态", "截图",
             "gpt-4o", "qwen-vl", "qvq", "glm-4v", "doubao-vision",
             "mimo-v2.5", "mimo-v2-5", "gemini", "claude-3", "vl",
         ]
         text = f"{provider} {model} {model_info.get('name', '')}".lower()
+        compact_text = re.sub(r"[^a-z0-9]+", "", text)
+        if "minimaxm3" in compact_text or ("minimax" in text and re.search(r"(^|[^a-z0-9])m3([^a-z0-9]|$)", text)):
+            tags.append("vision")
+            return tags
         if any(marker in text for marker in vision_markers):
             tags.append("vision")
         return tags
@@ -151,9 +160,13 @@ class ModelRegistry:
                     existing.description = m_data.get("description", existing.description)
                     existing.is_active = m_data.get("is_active", existing.is_active)
                     existing.is_default = m_data.get("is_default", existing.is_default)
+                    if "supports_vision" in m_data:
+                        existing.supports_vision = m_data.get("supports_vision")
+                        self._sync_vision_tag(existing)
                 else:
                     # 自定义模型：直接添加
                     config = ModelConfig.from_dict(m_data)
+                    self._sync_vision_tag(config)
                     self._models[model_id] = config
 
             # 恢复默认模型
@@ -177,6 +190,7 @@ class ModelRegistry:
         output_price: float = 0.0,
         context_length: int = 4096,
         description: str = "",
+        supports_vision: Optional[bool] = None,
         set_as_default: bool = False,
     ) -> ModelConfig:
         """添加自定义模型"""
@@ -194,7 +208,9 @@ class ModelRegistry:
             output_price_per_1k=output_price,
             context_length=context_length,
             description=description,
+            supports_vision=supports_vision,
         )
+        self._sync_vision_tag(config)
         self._models[config_id] = config
 
         if set_as_default or not self._default_model_id:
@@ -290,6 +306,7 @@ class ModelRegistry:
         context_length: Optional[int] = None,
         description: Optional[str] = None,
         is_active: Optional[bool] = None,
+        supports_vision: Optional[bool] = None,
     ) -> bool:
         """更新模型配置（支持预置模型和自定义模型）"""
         if model_id not in self._models:
@@ -311,8 +328,20 @@ class ModelRegistry:
             config.description = description
         if is_active is not None:
             config.is_active = is_active
+        if supports_vision is not None:
+            config.supports_vision = supports_vision
+            self._sync_vision_tag(config)
         self.save_to_file()
         return True
+
+    @staticmethod
+    def _sync_vision_tag(config: ModelConfig) -> None:
+        tags = list(config.tags or [])
+        if config.supports_vision is True and "vision" not in tags:
+            tags.append("vision")
+        if config.supports_vision is False:
+            tags = [tag for tag in tags if tag != "vision"]
+        config.tags = tags
 
     def to_json(self, mask_api_key: bool = True) -> str:
         """导出为JSON"""

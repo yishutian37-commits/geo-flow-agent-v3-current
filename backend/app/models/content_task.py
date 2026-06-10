@@ -12,6 +12,7 @@ class ContentTask(Base):
     project_id = Column(UUIDString, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
     group_id = Column(UUIDString, ForeignKey("question_groups.id"), nullable=True)
     question_id = Column(UUIDString, ForeignKey("questions.id", ondelete="SET NULL"), nullable=True)
+    knowledge_asset_ids = Column(Text, nullable=True)
     content_type = Column(String(100), nullable=False)
     layer = Column(String(50), nullable=False)
     priority = Column(String(20), default="medium", nullable=False)

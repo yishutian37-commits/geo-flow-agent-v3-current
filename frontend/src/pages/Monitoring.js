@@ -303,6 +303,7 @@ function Monitoring() {
   const [selectedRun, setSelectedRun] = useState(null);
   const [promotingBaselineRunId, setPromotingBaselineRunId] = useState(null);
   const [creatingTaskSampleId, setCreatingTaskSampleId] = useState(null);
+  const [savingReviewSampleId, setSavingReviewSampleId] = useState(null);
   const cancelRequestedRef = useRef(false);
   const activeAbortControllerRef = useRef(null);
   const activeRunIdRef = useRef(null);
@@ -974,6 +975,26 @@ function Monitoring() {
       message.error('生成内容任务失败：' + extractError(error));
     } finally {
       setCreatingTaskSampleId(null);
+    }
+  };
+
+  const handleSaveSampleReviewKnowledge = async (sample) => {
+    setSavingReviewSampleId(sample.id);
+    try {
+      await monitoringApi.createReviewKnowledgeFromSample(sample.id, {
+        notes: sample.brand_mentioned
+          ? '复盘该回答的提及、推荐、来源和内容缺口，供后续问题矩阵与内容任务参考。'
+          : '复盘该回答未识别品牌的原因，供后续补充入池内容和公开信源参考。',
+      });
+      message.success('已沉淀为项目知识库复盘资料');
+      await Promise.all([
+        selectedProjectId ? loadSourceAnalysis(selectedProjectId) : Promise.resolve(),
+        loadSamples(selectedProjectId),
+      ]);
+    } catch (error) {
+      message.error('沉淀复盘资料失败：' + extractError(error));
+    } finally {
+      setSavingReviewSampleId(null);
     }
   };
 
@@ -2087,7 +2108,21 @@ function Monitoring() {
         title="AI 搜索详情"
         open={!!sampleDetail}
         onCancel={() => setSampleDetail(null)}
-        footer={<Button onClick={() => setSampleDetail(null)}>关闭</Button>}
+        footer={(
+          <Space>
+            <Button onClick={() => setSampleDetail(null)}>关闭</Button>
+            {sampleDetail && (
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                loading={savingReviewSampleId === sampleDetail.id}
+                onClick={() => handleSaveSampleReviewKnowledge(sampleDetail)}
+              >
+                沉淀为复盘资料
+              </Button>
+            )}
+          </Space>
+        )}
         width={920}
       >
         {sampleDetail && (

@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -20,11 +20,13 @@ class ContentTaskCreate(ContentTaskBase):
     project_id: UUID
     group_id: Optional[UUID] = None
     question_id: Optional[UUID] = None
+    knowledge_asset_ids: List[UUID] = Field(default_factory=list)
 
 
 class ContentTaskUpdate(BaseModel):
     group_id: Optional[UUID] = None
     question_id: Optional[UUID] = None
+    knowledge_asset_ids: Optional[List[UUID]] = None
     content_type: Optional[str] = Field(None, max_length=100)
     layer: Optional[str] = Field(None, max_length=50)
     priority: Optional[str] = Field(None, max_length=20)
@@ -47,6 +49,7 @@ class ContentTaskOut(ContentTaskBase):
     project_id: UUID
     group_id: Optional[UUID] = None
     question_id: Optional[UUID] = None
+    knowledge_asset_ids: List[UUID] = Field(default_factory=list)
     assignee: Optional[UUID] = None
     actual_token_cost: Optional[float] = None
     actual_api_cost: Optional[float] = None

@@ -1,4 +1,5 @@
-from typing import List, Optional
+import json
+from typing import Dict, List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -11,6 +12,7 @@ from app.core.database import get_db
 from app.models.approval import Approval
 from app.models.content_draft import ContentDraft
 from app.models.content_task import ContentTask
+from app.models.corpus_item import CorpusItem
 from app.models.publish_record import PublishRecord
 from app.models.project import Project
 from app.models.question import Question, QuestionGroup
@@ -20,6 +22,149 @@ from app.schemas.content_task import ContentTaskCreate, ContentTaskUpdate, Conte
 from app.services.state_machine import StateMachine, StateMachineError, TaskStatus
 
 router = APIRouter()
+
+
+def _encode_knowledge_asset_ids(values: Optional[List[UUID]]) -> Optional[str]:
+    ids = []
+    for value in values or []:
+        text = str(value)
+        if text not in ids:
+            ids.append(text)
+    return json.dumps(ids, ensure_ascii=False) if ids else None
+
+
+def _decode_knowledge_asset_ids(value: Optional[str]) -> List[str]:
+    if not value:
+        return []
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        parsed = []
+    if not isinstance(parsed, list):
+        return []
+    ids = []
+    for item in parsed:
+        text = str(item).strip()
+        if text and text not in ids:
+            ids.append(text)
+    return ids
+
+
+def _knowledge_asset_to_dict(item: CorpusItem) -> dict:
+    return {
+        "id": str(item.id),
+        "title": item.title,
+        "content_preview": (item.content or "")[:240],
+        "knowledge_layer": item.knowledge_layer,
+        "business_use": item.business_use,
+        "evidence_level": item.evidence_level,
+        "reusable_scope": item.reusable_scope,
+        "source_type": item.source_type,
+        "source_url": item.source_url,
+        "tags": item.tags,
+    }
+
+
+KNOWLEDGE_RECOMMEND_TERMS = [
+    "资质",
+    "证书",
+    "编号",
+    "合规",
+    "认证",
+    "案例",
+    "客户",
+    "口碑",
+    "评价",
+    "地址",
+    "电话",
+    "联系",
+    "价格",
+    "费用",
+    "流程",
+    "售后",
+    "产品",
+    "服务",
+    "参数",
+    "对比",
+    "竞品",
+    "优势",
+    "场景",
+    "人群",
+    "痛点",
+]
+
+
+def _recommendation_terms_for_question(
+    question: Optional[Question],
+    group: Optional[QuestionGroup],
+    content_type: Optional[str],
+    layer: Optional[str],
+) -> List[str]:
+    parts = [
+        question.question_text if question else "",
+        question.tags if question else "",
+        question.keyword_layer if question else "",
+        question.knowledge_need if question else "",
+        question.search_asset_type if question else "",
+        question.evidence_support if question else "",
+        question.content_actionability if question else "",
+        group.intent_name if group else "",
+        group.representative_question if group else "",
+        content_type or "",
+        layer or "",
+    ]
+    text = " ".join(str(part or "") for part in parts)
+    terms = [term for term in KNOWLEDGE_RECOMMEND_TERMS if term and term in text]
+    if question and question.keyword_layer == "proof":
+        terms.extend(["资质", "证书", "编号", "案例"])
+    if question and question.keyword_layer == "conversion":
+        terms.extend(["价格", "地址", "联系", "流程"])
+    if question and question.keyword_layer == "comparison":
+        terms.extend(["对比", "竞品", "优势", "案例"])
+    if question and question.keyword_layer == "scenario":
+        terms.extend(["场景", "人群", "痛点", "案例"])
+    seen = []
+    for term in terms:
+        if term not in seen:
+            seen.append(term)
+    return seen
+
+
+def _score_knowledge_asset(item: CorpusItem, terms: List[str], question: Optional[Question]) -> int:
+    haystack = " ".join([
+        item.title or "",
+        item.content or "",
+        item.tags or "",
+        item.knowledge_layer or "",
+        item.business_use or "",
+        item.source_type or "",
+    ])
+    score = 0
+    for term in terms:
+        if term and term in haystack:
+            score += 5
+    if item.business_use in {"content_writing", "general"}:
+        score += 3
+    if item.evidence_level in {"official", "verified"}:
+        score += 2
+    if question:
+        if question.keyword_layer == "proof" and item.knowledge_layer in {"basic_info", "content_material"}:
+            score += 3
+        if question.keyword_layer == "comparison" and item.knowledge_layer in {"competitor_feedback", "judgment", "story"}:
+            score += 3
+        if question.keyword_layer == "scenario" and item.knowledge_layer in {"story", "judgment", "content_material"}:
+            score += 3
+        if question.keyword_layer == "conversion" and item.knowledge_layer in {"basic_info", "content_material"}:
+            score += 3
+    if item.knowledge_layer == "review_data":
+        score -= 6
+    if item.business_use == "monitoring_review":
+        score -= 6
+    if item.evidence_level == "internal":
+        score -= 4
+    if "无关" in haystack:
+        score -= 8
+    return score
 
 
 def _parse_task_status(value: str) -> TaskStatus:
@@ -103,8 +248,10 @@ def _task_to_dict(
     project: Optional[Project] = None,
     group: Optional[QuestionGroup] = None,
     question: Optional[Question] = None,
+    knowledge_assets: Optional[List[CorpusItem]] = None,
 ) -> dict:
     linked_question_text = question.question_text if question else None
+    knowledge_asset_ids = _decode_knowledge_asset_ids(task.knowledge_asset_ids)
     return {
         "id": str(task.id),
         "project_id": str(task.project_id),
@@ -120,6 +267,11 @@ def _task_to_dict(
         "question_text": linked_question_text,
         "question_type": question.question_type if question else None,
         "question_priority": question.priority if question else None,
+        "knowledge_asset_ids": knowledge_asset_ids,
+        "knowledge_assets": [
+            _knowledge_asset_to_dict(item)
+            for item in (knowledge_assets or [])
+        ],
         "content_type": task.content_type,
         "layer": task.layer,
         "priority": task.priority,
@@ -192,6 +344,64 @@ async def _get_question_for_project(
     return question
 
 
+async def _get_knowledge_assets_for_project(
+    db: AsyncSession,
+    knowledge_asset_ids: Optional[List[UUID] | List[str]],
+    project_id: UUID,
+) -> List[CorpusItem]:
+    ids = []
+    for value in knowledge_asset_ids or []:
+        text = str(value)
+        if text and text not in ids:
+            ids.append(text)
+    if not ids:
+        return []
+    result = await db.execute(
+        select(CorpusItem).where(
+            CorpusItem.id.in_(ids),
+            CorpusItem.project_id == str(project_id),
+        )
+    )
+    assets_by_id: Dict[str, CorpusItem] = {
+        str(item.id): item for item in result.scalars().all()
+    }
+    missing = [item_id for item_id in ids if item_id not in assets_by_id]
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail="内容任务关联的知识资产不存在，或不属于当前项目",
+        )
+    return [assets_by_id[item_id] for item_id in ids]
+
+
+async def _recommend_knowledge_assets_for_task(
+    db: AsyncSession,
+    *,
+    project_id: UUID,
+    question: Optional[Question],
+    group: Optional[QuestionGroup],
+    content_type: Optional[str],
+    layer: Optional[str],
+    limit: int = 6,
+) -> List[CorpusItem]:
+    terms = _recommendation_terms_for_question(question, group, content_type, layer)
+    if not terms:
+        return []
+    result = await db.execute(
+        select(CorpusItem)
+        .where(CorpusItem.project_id == str(project_id))
+        .order_by(CorpusItem.created_at.desc())
+        .limit(120)
+    )
+    scored = []
+    for item in result.scalars().all():
+        score = _score_knowledge_asset(item, terms, question)
+        if score > 0:
+            scored.append((score, item))
+    scored.sort(key=lambda row: row[0], reverse=True)
+    return [item for _, item in scored[:limit]]
+
+
 @router.get("")
 async def list_content_tasks(
     project_id: Optional[UUID] = Query(None),
@@ -236,12 +446,26 @@ async def list_content_tasks(
     if group_ids:
         groups_result = await db.execute(select(QuestionGroup).where(QuestionGroup.id.in_(group_ids)))
         groups_by_id = {str(group.id): group for group in groups_result.scalars().all()}
+    knowledge_asset_ids = sorted({
+        asset_id
+        for task in tasks
+        for asset_id in _decode_knowledge_asset_ids(task.knowledge_asset_ids)
+    })
+    knowledge_assets_by_id = {}
+    if knowledge_asset_ids:
+        assets_result = await db.execute(select(CorpusItem).where(CorpusItem.id.in_(knowledge_asset_ids)))
+        knowledge_assets_by_id = {str(item.id): item for item in assets_result.scalars().all()}
     return [
         _task_to_dict(
             task,
             projects_by_id.get(str(task.project_id)),
             groups_by_id.get(str(task.group_id)) if task.group_id else None,
             questions_by_id.get(str(task.question_id)) if task.question_id else None,
+            [
+                knowledge_assets_by_id[asset_id]
+                for asset_id in _decode_knowledge_asset_ids(task.knowledge_asset_ids)
+                if asset_id in knowledge_assets_by_id
+            ],
         )
         for task in tasks
     ]
@@ -258,10 +482,23 @@ async def create_content_task(
     question = await _get_question_for_project(db, data.question_id, data.project_id, data.group_id)
     group_id = data.group_id or (question.group_id if question else None)
     group = await _get_group_for_project(db, group_id, data.project_id)
+    if data.knowledge_asset_ids:
+        knowledge_assets = await _get_knowledge_assets_for_project(db, data.knowledge_asset_ids, data.project_id)
+    else:
+        knowledge_assets = await _recommend_knowledge_assets_for_task(
+            db,
+            project_id=data.project_id,
+            question=question,
+            group=group,
+            content_type=data.content_type,
+            layer=data.layer,
+        )
+    knowledge_asset_ids = [item.id for item in knowledge_assets]
     task = ContentTask(
         project_id=data.project_id,
         group_id=group_id,
         question_id=data.question_id,
+        knowledge_asset_ids=_encode_knowledge_asset_ids(knowledge_asset_ids),
         content_type=data.content_type,
         layer=data.layer,
         priority=data.priority,
@@ -274,7 +511,7 @@ async def create_content_task(
     db.add(task)
     await db.commit()
     await db.refresh(task)
-    return _task_to_dict(task, project, group, question)
+    return _task_to_dict(task, project, group, question, knowledge_assets)
 
 
 @router.get("/{task_id}")
@@ -290,7 +527,12 @@ async def get_content_task(
     project = await _get_project_or_400(db, task.project_id)
     group = await _get_group_for_project(db, task.group_id, task.project_id)
     question = await _get_question_for_project(db, task.question_id, task.project_id, task.group_id)
-    return _task_to_dict(task, project, group, question)
+    knowledge_assets = await _get_knowledge_assets_for_project(
+        db,
+        _decode_knowledge_asset_ids(task.knowledge_asset_ids),
+        task.project_id,
+    )
+    return _task_to_dict(task, project, group, question, knowledge_assets)
 
 
 @router.put("/{task_id}")
@@ -307,6 +549,11 @@ async def update_content_task(
         raise HTTPException(status_code=404, detail="Content task not found")
 
     update_data = data.model_dump(exclude_unset=True)
+    knowledge_assets = None
+    if "knowledge_asset_ids" in update_data:
+        requested_asset_ids = update_data.pop("knowledge_asset_ids") or []
+        knowledge_assets = await _get_knowledge_assets_for_project(db, requested_asset_ids, task.project_id)
+        task.knowledge_asset_ids = _encode_knowledge_asset_ids(requested_asset_ids)
     changed_target_status = None
     if "status" in update_data and update_data["status"] and update_data["status"] != task.status:
         target_status = _parse_task_status(update_data["status"])
@@ -337,7 +584,13 @@ async def update_content_task(
     project = await _get_project_or_400(db, task.project_id)
     group = await _get_group_for_project(db, task.group_id, task.project_id)
     question = await _get_question_for_project(db, task.question_id, task.project_id, task.group_id)
-    return _task_to_dict(task, project, group, question)
+    if knowledge_assets is None:
+        knowledge_assets = await _get_knowledge_assets_for_project(
+            db,
+            _decode_knowledge_asset_ids(task.knowledge_asset_ids),
+            task.project_id,
+        )
+    return _task_to_dict(task, project, group, question, knowledge_assets)
 
 
 @router.post("/{task_id}/transition")

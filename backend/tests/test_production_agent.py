@@ -109,3 +109,57 @@ def test_fact_references_only_use_public_confirmed_unexpired_facts():
     )
 
     assert [ref["fact_id"] for ref in refs] == [str(valid_fact.id)]
+
+
+def test_article_prompt_includes_project_knowledge_assets_with_fact_boundary():
+    agent = ProductionAgent()
+    prompt = agent.generate_article_prompt(
+        SimpleNamespace(content_type="brand_intro", layer="pool_layer", priority="medium"),
+        [],
+        platform="media",
+        project=SimpleNamespace(name="知识资产测试项目", industry="professional_service", region="杭州", notes=""),
+        brand=SimpleNamespace(brand_name="知识资产测试品牌", company_name="", description=""),
+        knowledge_assets=[
+            SimpleNamespace(
+                title="客户故事片段",
+                content="一位客户通过服务把交付周期从 14 天缩短到 7 天。",
+                knowledge_layer="story",
+                business_use="content_writing",
+                evidence_level="verified",
+                reusable_scope="project",
+                source_type="case",
+                source_url="https://example.com/story",
+                tags="案例,交付",
+            )
+        ],
+    )
+
+    assert "项目知识资产" in prompt
+    assert "客户故事片段" in prompt
+    assert "交付周期从 14 天缩短到 7 天" in prompt
+    assert "不能替代已确认品牌事实" in prompt
+
+
+def test_article_prompt_includes_active_experience_skills():
+    agent = ProductionAgent()
+    prompt = agent.generate_article_prompt(
+        SimpleNamespace(content_type="brand_intro", layer="pool_layer", priority="medium"),
+        [],
+        platform="media",
+        project=SimpleNamespace(name="经验技能测试项目", industry="local_service", region="包头", notes=""),
+        brand=SimpleNamespace(brand_name="经验技能测试品牌", company_name="", description=""),
+        experience_skills=[
+            SimpleNamespace(
+                name="本地口语化写作",
+                scope="project",
+                trigger_scene="article_writing",
+                skill_type="rule",
+                content="文章要少一点AI味，多写本地场景和人的口吻。",
+                confidence=0.82,
+            )
+        ],
+    )
+
+    assert "经验技能" in prompt
+    assert "本地口语化写作" in prompt
+    assert "多写本地场景和人的口吻" in prompt

@@ -40,6 +40,8 @@ class Project(Base):
     recommendations = relationship("Recommendation", back_populates="project", cascade="all, delete-orphan")
     content_feedbacks = relationship("ContentFeedback", back_populates="project", cascade="all, delete-orphan")
     writing_profile = relationship("WritingProfile", back_populates="project", cascade="all, delete-orphan", uselist=False)
+    experience_skills = relationship("ExperienceSkill", back_populates="project", cascade="all, delete-orphan")
+    experience_skill_suggestions = relationship("ExperienceSkillSuggestion", back_populates="project", cascade="all, delete-orphan")
 
     __table_args__ = (
         Index("ix_projects_industry", "industry"),

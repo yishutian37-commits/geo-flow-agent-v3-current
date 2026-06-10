@@ -31,7 +31,10 @@ class Question(Base):
     question_type = Column(String(100), default="brand_reputation", nullable=False)
     tags = Column(Text, nullable=True)
     keyword_breakdown = Column(Text, nullable=True)
+    keyword_layer = Column(String(100), nullable=True)
     question_formula = Column(String(500), nullable=True)
+    knowledge_need = Column(Text, nullable=True)
+    search_asset_type = Column(String(100), nullable=True)
     business_value = Column(String(100), nullable=True)
     evidence_support = Column(Text, nullable=True)
     content_actionability = Column(Text, nullable=True)
@@ -46,4 +49,6 @@ class Question(Base):
     monitoring_samples = relationship("MonitoringSample", back_populates="question")
     __table_args__ = (
         Index("ix_questions_group_id", "group_id"),
+        Index("ix_questions_keyword_layer", "keyword_layer"),
+        Index("ix_questions_search_asset_type", "search_asset_type"),
     )

@@ -54,6 +54,8 @@ def test_extract_json_object_tolerates_common_vision_model_wrappers():
     service = WebBridgeService()
 
     assert service._extract_json_object('```json\n{"has_answer": true,}\n```')["has_answer"] is True
+    assert service._extract_json_object('<think>analyze page</think>\n{"input":{"x_ratio":0.5},"send":{"x_ratio":0.9},"confidence":0.8}')["confidence"] == 0.8
+    assert service._extract_json_object('<think>open reasoning {"bad": </think>\n{"has_answer":true,"answer_text":"ok"}')["answer_text"] == "ok"
     assert service._extract_json_object("识别结果如下：\n{'index': 1, 'confidence': 0.82}")["index"] == 1
     assert service._extract_json_object('说明文字 {"answer_text":"ok","visible_sources":[]} 结束')["answer_text"] == "ok"
 
@@ -87,6 +89,73 @@ def test_vision_helpers_select_visual_model_and_extract_raw_text():
 
     assert service._select_vision_model_config(registry) is vision_model
     assert service._extract_json_object(service._extract_llm_response_text(response))["ok"] is True
+
+
+def test_extract_llm_response_text_prefers_content_over_reasoning():
+    service = WebBridgeService()
+    response = SimpleNamespace(
+        content="",
+        raw_response={
+            "choices": [
+                {
+                    "message": {
+                        "reasoning_content": "<think>this is not json</think>",
+                        "content": '{"ok": true, "answer_text": "formal answer"}',
+                    }
+                }
+            ]
+        },
+    )
+
+    extracted = service._extract_llm_response_text(response)
+    assert "formal answer" in extracted
+    assert "this is not json" not in extracted
+    assert service._extract_json_object(extracted)["ok"] is True
+
+
+def test_vision_helpers_select_minimax_m3_and_reject_wenxin_ui_noise():
+    service = WebBridgeService()
+    minimax_m3 = SimpleNamespace(
+        provider="custom",
+        model="minimaxm3",
+        name="minimaxm3",
+        description="",
+        tags=[],
+        api_key="key",
+    )
+    registry = SimpleNamespace(
+        get_default_model=lambda: minimax_m3,
+        list_models=lambda active_only=True, configured_only=True: [minimax_m3],
+    )
+
+    assert service._select_vision_model_config(registry) is minimax_m3
+    assert not service._looks_like_answer("深度分析需求并解答，你需要什么帮助？\n文心 5.1 快速\n内容由AI生成，仅供参考，请仔细甄别\n参考\n0")
+    assert service._looks_like_answer("第一推荐：蒙霁空天智能（青山区）。该机构持有CAAC运营合格证，适合优先核验。")
+
+
+def test_vision_model_manual_capability_overrides_name_guessing():
+    service = WebBridgeService()
+    manually_enabled = SimpleNamespace(
+        provider="custom",
+        model="private-router-model-a",
+        name="内部转发模型",
+        description="",
+        tags=[],
+        api_key="key",
+        supports_vision=True,
+    )
+    manually_disabled = SimpleNamespace(
+        provider="openai",
+        model="gpt-4o",
+        name="GPT-4o",
+        description="",
+        tags=["vision"],
+        api_key="key",
+        supports_vision=False,
+    )
+
+    assert service._looks_like_vision_model(manually_enabled) is True
+    assert service._looks_like_vision_model(manually_disabled) is False
 
 
 class UnsentQuestionWebBridgeService(FakeWebBridgeService):
@@ -299,6 +368,14 @@ class VisionAnswerDomFallbackService(VisionControlFallbackService):
         return [{"title": "官方页面", "url": "https://example.com"}]
 
 
+class VisionAnswerParseFailureDomFallbackService(VisionAnswerDomFallbackService):
+    async def _wait_for_visual_answer(self, question, session, wait_seconds):
+        return await WebBridgeService._wait_for_visual_answer(self, question, session, wait_seconds)
+
+    async def _vision_extract_answer(self, screenshot_data, question):
+        raise WebBridgeError("vision json parse failed")
+
+
 @pytest.mark.asyncio
 async def test_vision_mode_uses_page_text_when_visual_answer_is_empty(monkeypatch):
     async def no_sleep(_seconds):
@@ -325,6 +402,35 @@ async def test_vision_mode_uses_page_text_when_visual_answer_is_empty(monkeypatc
 
     assert "蒙霁空天智能" in result.answer_text
     assert result.sources == [{"title": "官方页面", "url": "https://example.com"}]
+
+
+@pytest.mark.asyncio
+async def test_vision_mode_uses_page_text_when_visual_json_parse_fails(monkeypatch):
+    async def no_sleep(_seconds):
+        return None
+
+    monkeypatch.setattr(webbridge_module.asyncio, "sleep", no_sleep)
+    service = VisionAnswerParseFailureDomFallbackService()
+    target = SimpleNamespace(
+        product_name="vision target",
+        notes="",
+        web_url="https://example.com/",
+        recognition_mode="vision",
+        input_selector="",
+        submit_selector="",
+        response_selector=None,
+    )
+
+    result = await service.ask_question(
+        target=target,
+        question="鎬庝箞鍒ゆ柇鍖呭ごCAAC鏃犱汉鏈烘墽鐓у煿璁満鏋勬槸鍚﹀悎瑙勶紵",
+        session="vision-json-failure-fallback-session",
+        wait_seconds=20,
+    )
+
+    assert "CAAC" in result.answer_text
+    assert "运营合格证" in result.answer_text
+    assert "vision json parse failed" in result.raw_tail
 
 
 class VisionCompleteAnswerService(VisionControlFallbackService):

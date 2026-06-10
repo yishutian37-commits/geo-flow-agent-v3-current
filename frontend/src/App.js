@@ -11,6 +11,8 @@ import {
   CheckCircleOutlined,
   DatabaseOutlined,
   FileSearchOutlined,
+  BookOutlined,
+  BulbOutlined,
 } from '@ant-design/icons';
 
 import Dashboard from './pages/Dashboard';
@@ -19,8 +21,10 @@ import ProjectDetail from './pages/ProjectDetail';
 import ContentManagement from './pages/ContentManagement';
 import Monitoring from './pages/Monitoring';
 import BrandFacts from './pages/BrandFacts';
+import CorpusLibrary from './pages/CorpusLibrary';
 import AIModels from './pages/AIModels';
 import MemoryLibrary from './pages/MemoryLibrary';
+import ExperienceSkills from './pages/ExperienceSkills';
 import Reports from './pages/Reports';
 import Login from './pages/Login';
 import Settings from './pages/Settings';
@@ -60,6 +64,7 @@ function App() {
   const menuItems = [
     { key: '/', icon: <DashboardOutlined />, label: <Link to="/">仪表盘</Link> },
     { key: '/projects', icon: <ProjectOutlined />, label: <Link to="/projects">项目管理</Link> },
+    { key: '/corpus', icon: <BookOutlined />, label: <Link to="/corpus">项目知识库</Link> },
     { key: '/brand-facts', icon: <CheckCircleOutlined />, label: <Link to="/brand-facts">品牌事实库</Link> },
     { key: '/content', icon: <FileTextOutlined />, label: <Link to="/content">内容管理</Link> },
     { key: '/monitoring', icon: <BarChartOutlined />, label: <Link to="/monitoring">监测分析</Link> },
@@ -67,6 +72,7 @@ function App() {
     { key: '/ai-models', icon: <ThunderboltOutlined />, label: <Link to="/ai-models">AI 模型</Link> },
     { key: '/settings', icon: <SettingOutlined />, label: <Link to="/settings">系统设置</Link> },
     { key: '/memory', icon: <DatabaseOutlined />, label: <Link to="/memory">记忆库</Link> },
+    { key: '/experience-skills', icon: <BulbOutlined />, label: <Link to="/experience-skills">经验技能库</Link> },
   ];
 
   return (
@@ -107,9 +113,11 @@ function App() {
             <Route path="/content" element={<ContentManagement />} />
             <Route path="/monitoring" element={<Monitoring />} />
             <Route path="/reports" element={<Reports />} />
+            <Route path="/corpus" element={<CorpusLibrary />} />
             <Route path="/brand-facts" element={<BrandFacts />} />
             <Route path="/ai-models" element={<AIModels />} />
             <Route path="/memory" element={<MemoryLibrary />} />
+            <Route path="/experience-skills" element={<ExperienceSkills />} />
             <Route path="/settings" element={<Settings />} />
           </Routes>
         </Content>

@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   Card, Descriptions, Tag, Tabs, Button, Progress, Alert, Spin, message, Modal, Form, Input, List, Space, Badge, Empty, Typography, Row, Col, Statistic, Select,
 } from 'antd';
 import {
   projectsApi, brandsApi, brandFactsApi, questionsApi, contentTasksApi, monitoringApi,
-  approvalsApi, sourceAssetsApi,
+  approvalsApi, sourceAssetsApi, corpusItemsApi,
 } from '../services/api';
 import Table from '../components/SafeTable';
 
@@ -94,6 +94,30 @@ const questionTypeLabels = {
   after_sales: '售后/复训',
 };
 
+const keywordLayerLabels = {
+  category: '品类词',
+  region: '地域词',
+  scenario: '场景/人群',
+  proof: '证据验证',
+  conversion: '转化承接',
+  brand: '品牌主体',
+  comparison: '对比竞品',
+  other: '其他',
+};
+
+const searchAssetTypeLabels = {
+  official_site: '官网/官方页',
+  qualification: '资质证明',
+  case_page: '案例页',
+  media_report: '媒体报道',
+  faq: '问答/FAQ',
+  comparison: '对比测评',
+  local_guide: '本地指南',
+  contact_page: '联系/承接页',
+  product_page: '产品/服务页',
+  other: '其他',
+};
+
 const parseTags = (value) => String(value || '')
   .split(/[,，、\s]+/)
   .map((item) => item.trim())
@@ -137,6 +161,10 @@ function ProjectDetail() {
   const [sourceAssetsLoading, setSourceAssetsLoading] = useState(false);
   const [addSourceAssetVisible, setAddSourceAssetVisible] = useState(false);
   const [sourceAssetForm] = Form.useForm();
+
+  // 项目知识资产
+  const [knowledgeAssets, setKnowledgeAssets] = useState([]);
+  const [knowledgeAssetsLoading, setKnowledgeAssetsLoading] = useState(false);
 
   // 问题库
   const [questionGroups, setQuestionGroups] = useState([]);
@@ -237,6 +265,18 @@ function ProjectDetail() {
     }
   }, [id]);
 
+  const loadKnowledgeAssets = useCallback(async () => {
+    setKnowledgeAssetsLoading(true);
+    try {
+      const res = await corpusItemsApi.list({ project_id: id, limit: 1000 });
+      setKnowledgeAssets(res.data || []);
+    } catch (error) {
+      message.error('加载项目知识资产失败');
+    } finally {
+      setKnowledgeAssetsLoading(false);
+    }
+  }, [id]);
+
   useEffect(() => {
     loadProject();
     loadFacts();
@@ -244,7 +284,22 @@ function ProjectDetail() {
     loadTasks();
     loadMonitoring();
     loadSourceAssets();
-  }, [loadProject, loadFacts, loadQuestions, loadTasks, loadMonitoring, loadSourceAssets]);
+    loadKnowledgeAssets();
+  }, [loadProject, loadFacts, loadQuestions, loadTasks, loadMonitoring, loadSourceAssets, loadKnowledgeAssets]);
+
+  const knowledgeLoopStats = useMemo(() => {
+    const questionCount = questionGroups.reduce((sum, group) => sum + (group.questions?.length || 0), 0);
+    const sampleCount = monitoringRuns.reduce((sum, run) => sum + Number(run.sample_count || 0), 0);
+    const reviewCount = knowledgeAssets.filter((item) => item.knowledge_layer === 'review_data').length;
+    return {
+      knowledgeCount: knowledgeAssets.length,
+      confirmedFactCount: facts.filter((item) => item.status === 'confirmed').length,
+      questionCount,
+      taskCount: tasks.length,
+      sampleCount,
+      reviewCount,
+    };
+  }, [facts, knowledgeAssets, monitoringRuns, questionGroups, tasks]);
 
   const handleDiagnose = async () => {
     setGapLoading(true);
@@ -585,7 +640,10 @@ function ProjectDetail() {
     questionForm.setFieldsValue({
       question_type: 'brand_reputation',
       keyword_breakdown: '',
+      keyword_layer: 'category',
       question_formula: '',
+      knowledge_need: '',
+      search_asset_type: 'faq',
       business_value: 'medium',
       evidence_support: '',
       content_actionability: '',
@@ -606,7 +664,10 @@ function ProjectDetail() {
       question_type: question.question_type || 'brand_reputation',
       tags: question.tags || '',
       keyword_breakdown: question.keyword_breakdown || '',
+      keyword_layer: question.keyword_layer || 'category',
       question_formula: question.question_formula || '',
+      knowledge_need: question.knowledge_need || '',
+      search_asset_type: question.search_asset_type || 'faq',
       business_value: question.business_value || 'medium',
       evidence_support: question.evidence_support || '',
       content_actionability: question.content_actionability || '',
@@ -860,6 +921,50 @@ function ProjectDetail() {
           <Descriptions.Item label="检测平台">{project.target_ai_products || '-'}</Descriptions.Item>
           <Descriptions.Item label="创建时间">{new Date(project.created_at).toLocaleString()}</Descriptions.Item>
         </Descriptions>
+      </Card>
+
+      <Card
+        title="GEO 知识闭环"
+        style={{ marginBottom: 16 }}
+        extra={<Button size="small" loading={knowledgeAssetsLoading} onClick={loadKnowledgeAssets}>刷新知识资产</Button>}
+      >
+        <Row gutter={[16, 16]}>
+          <Col xs={12} md={8} lg={4}>
+            <Statistic title="知识资产" value={knowledgeLoopStats.knowledgeCount} suffix="条" />
+          </Col>
+          <Col xs={12} md={8} lg={4}>
+            <Statistic title="已确认事实" value={knowledgeLoopStats.confirmedFactCount} suffix="条" />
+          </Col>
+          <Col xs={12} md={8} lg={4}>
+            <Statistic title="问题覆盖" value={knowledgeLoopStats.questionCount} suffix="条" />
+          </Col>
+          <Col xs={12} md={8} lg={4}>
+            <Statistic title="内容任务" value={knowledgeLoopStats.taskCount} suffix="个" />
+          </Col>
+          <Col xs={12} md={8} lg={4}>
+            <Statistic title="检测样本" value={knowledgeLoopStats.sampleCount} suffix="条" />
+          </Col>
+          <Col xs={12} md={8} lg={4}>
+            <Statistic title="复盘资料" value={knowledgeLoopStats.reviewCount} suffix="条" />
+          </Col>
+        </Row>
+        <Alert
+          style={{ marginTop: 16 }}
+          type="info"
+          showIcon
+          message="闭环链路"
+          description={(
+            <Space wrap>
+              {['资料', '事实', '问题', '内容', '发布', '复测', '复盘资料'].map((item, index) => (
+                <React.Fragment key={item}>
+                  <Tag color={index === 6 ? 'purple' : 'blue'}>{item}</Tag>
+                  {index < 6 && <Text type="secondary">→</Text>}
+                </React.Fragment>
+              ))}
+              <Text type="secondary">复盘资料会回到项目知识库，后续可继续参与问题矩阵和内容生成。</Text>
+            </Space>
+          )}
+        />
       </Card>
 
       <Tabs defaultActiveKey="1">
@@ -1116,6 +1221,16 @@ function ProjectDetail() {
                                 ))}
                               </Space>
                             )}
+                            {(q.keyword_layer || q.search_asset_type) && (
+                              <Space wrap size={6}>
+                                {q.keyword_layer && (
+                                  <Tag color="gold">关键词层：{keywordLayerLabels[q.keyword_layer] || q.keyword_layer}</Tag>
+                                )}
+                                {q.search_asset_type && (
+                                  <Tag color="lime">搜索资产：{searchAssetTypeLabels[q.search_asset_type] || q.search_asset_type}</Tag>
+                                )}
+                              </Space>
+                            )}
                             {(q.question_formula || q.business_value || q.recommended_platforms) && (
                               <Space wrap size={6}>
                                 {q.question_formula && <Tag color="purple">公式：{q.question_formula}</Tag>}
@@ -1127,6 +1242,9 @@ function ProjectDetail() {
                             )}
                             {q.evidence_support && (
                               <Text type="secondary">证据支撑：{q.evidence_support}</Text>
+                            )}
+                            {q.knowledge_need && (
+                              <Text type="secondary">知识需求：{q.knowledge_need}</Text>
                             )}
                             {q.content_actionability && (
                               <Text type="secondary">内容建议：{q.content_actionability}</Text>
@@ -1319,8 +1437,27 @@ function ProjectDetail() {
           <Form.Item name="keyword_breakdown" label="关键词拆解">
             <TextArea rows={2} placeholder="可填写 JSON 或自然语言，例如：地区词、品类词、信任词、价格词" />
           </Form.Item>
+          <Row gutter={12}>
+            <Col span={12}>
+              <Form.Item name="keyword_layer" label="关键词层" initialValue="category">
+                <Select
+                  options={Object.entries(keywordLayerLabels).map(([value, label]) => ({ value, label }))}
+                />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="search_asset_type" label="推荐搜索资产" initialValue="faq">
+                <Select
+                  options={Object.entries(searchAssetTypeLabels).map(([value, label]) => ({ value, label }))}
+                />
+              </Form.Item>
+            </Col>
+          </Row>
           <Form.Item name="question_formula" label="问题公式">
             <Input placeholder="例如：地域词 + 品类词 + 资质核验意图" />
+          </Form.Item>
+          <Form.Item name="knowledge_need" label="知识需求">
+            <TextArea rows={2} placeholder="回答这个问题需要哪些知识资产，例如资质编号、案例、地址、价格、联系方式、对比证据等" />
           </Form.Item>
           <Row gutter={12}>
             <Col span={12}>

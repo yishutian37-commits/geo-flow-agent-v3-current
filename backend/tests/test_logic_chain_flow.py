@@ -9,6 +9,13 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 import app.models  # noqa: F401
 from app.api.v1.endpoints.brands import create_brand
 from app.api.v1.endpoints.content_drafts import create_content_draft
+from app.api.v1.endpoints.corpus_items import (
+    CorpusItemCreate,
+    CorpusItemUpdate,
+    create_corpus_item,
+    list_corpus_items,
+    update_corpus_item,
+)
 from app.main import ensure_runtime_schema
 from app.main import repair_reserved_local_user_emails
 from app.api.v1.endpoints.baseline_runs import promote_monitoring_run_to_baseline
@@ -23,6 +30,8 @@ from app.api.v1.endpoints.projects import (
 )
 from app.api.v1.endpoints.monitoring import (
     SampleContentTaskRequest,
+    _brand_terms,
+    _infer_answer_metrics,
     create_content_task_from_sample,
 )
 from app.api.v1.endpoints.questions import create_question, create_question_group, delete_question, update_question
@@ -114,6 +123,93 @@ def test_question_templates_stay_industry_aware_and_do_not_use_ai_platform_terms
         assert not any(term in joined.lower() for term in platform_terms)
         assert any(term in joined for term in case["expected_terms"])
         assert not any(term in joined for term in case["forbidden_terms"])
+
+
+def test_monitoring_brand_terms_derive_company_short_name_for_answer_matching():
+    project = SimpleNamespace(name="蒙霁空天智能（内蒙古）科技发展有限公司")
+    brand = SimpleNamespace(
+        brand_name="蒙霁空天智能（内蒙古）科技发展有限公司",
+        company_name="蒙霁空天智能（内蒙古）科技发展有限公司",
+        aliases="",
+    )
+
+    terms = _brand_terms(project, [brand])
+    inferred = _infer_answer_metrics(
+        "第一推荐：蒙霁空天智能（青山区）。该机构持有CAAC运营合格证，适合优先核验。",
+        terms,
+        [],
+    )
+
+    assert "蒙霁空天智能" in terms
+    assert inferred["brand_mentioned"] is True
+    assert inferred["recommended"] is True
+
+
+@pytest.mark.asyncio
+async def test_corpus_items_accept_json_body_for_long_project_materials():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", future=True)
+    session_maker = async_sessionmaker(engine, expire_on_commit=False)
+
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+
+        async with session_maker() as db:
+            project = await ProjectService(db).create_project(
+                ProjectCreate(
+                    name="资料库测试项目",
+                    industry="local_service",
+                    region="包头",
+                    budget=1000,
+                    target_ai_products="Kimi,DeepSeek",
+                    notes="用于验证企业资料库长文本保存",
+                ),
+                owner_id=None,
+            )
+            long_content = "企业资料包含资质编号、地址、案例和产品介绍。" * 120
+
+            item = await create_corpus_item(
+                CorpusItemCreate(
+                    project_id=project.id,
+                    title="官网企业介绍",
+                    source_type="website",
+                    tags="资质,地址,案例",
+                    content=long_content,
+                    contains_factual_claim=True,
+                ),
+                db=db,
+            )
+
+            assert item["project_id"] == str(project.id)
+            assert item["contains_factual_claim"] is True
+            assert item["content"] == long_content
+
+            updated = await update_corpus_item(
+                item_id=item["id"],
+                payload=CorpusItemUpdate(
+                    title="官网企业介绍更新版",
+                    content=long_content + "补充一条公开案例。",
+                    contains_factual_claim=False,
+                ),
+                db=db,
+            )
+
+            assert updated["title"] == "官网企业介绍更新版"
+            assert updated["contains_factual_claim"] is False
+            assert updated["content"].endswith("补充一条公开案例。")
+
+            listed = await list_corpus_items(
+                project_id=project.id,
+                contains_factual_claim=False,
+                source_type=None,
+                skip=0,
+                limit=100,
+                db=db,
+            )
+            assert len(listed) == 1
+            assert listed[0]["id"] == item["id"]
+    finally:
+        await engine.dispose()
 
 
 @pytest.mark.asyncio
@@ -561,6 +657,66 @@ async def test_runtime_schema_backfills_missing_model_columns_for_legacy_sqlite_
         assert {"title", "body", "version", "risk_level", "fact_refs"}.issubset(draft_columns)
         assert {"sources_json", "analysis_json", "screenshot_url"}.issubset(sample_columns)
         assert {"recognition_mode", "web_url", "submit_selector", "search_backend"}.issubset(target_columns)
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_runtime_schema_backfills_experience_skill_versions_for_legacy_sqlite_db():
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:", future=True)
+    legacy_skill_id = str(uuid4())
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(
+                text(
+                    """
+                    CREATE TABLE experience_skills (
+                        id VARCHAR(36) PRIMARY KEY,
+                        name VARCHAR(200) NOT NULL,
+                        scope VARCHAR(50) NOT NULL DEFAULT 'project',
+                        trigger_scene VARCHAR(100) NOT NULL DEFAULT 'article_writing',
+                        skill_type VARCHAR(100) NOT NULL DEFAULT 'rule',
+                        content TEXT NOT NULL,
+                        status VARCHAR(50) NOT NULL DEFAULT 'active'
+                    )
+                    """
+                )
+            )
+            await conn.execute(
+                text(
+                    """
+                    INSERT INTO experience_skills
+                        (id, name, scope, trigger_scene, skill_type, content, status)
+                    VALUES
+                        (:id, '旧写作经验', 'project', 'article_writing', 'rule', '多写真实场景', 'active')
+                    """
+                ),
+                {"id": legacy_skill_id},
+            )
+            await conn.run_sync(Base.metadata.create_all)
+            await ensure_runtime_schema(conn)
+
+            columns = {
+                row[1] for row in (await conn.execute(text("PRAGMA table_info(experience_skills)"))).fetchall()
+            }
+            versions = (
+                await conn.execute(
+                    text(
+                        """
+                        SELECT version, content, change_type
+                        FROM experience_skill_versions
+                        WHERE skill_id = :skill_id
+                        """
+                    ),
+                    {"skill_id": legacy_skill_id},
+                )
+            ).mappings().all()
+
+        assert "current_version" in columns
+        assert len(versions) == 1
+        assert versions[0]["version"] == 1
+        assert versions[0]["content"] == "多写真实场景"
+        assert versions[0]["change_type"] == "legacy_backfill"
     finally:
         await engine.dispose()
 

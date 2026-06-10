@@ -1,6 +1,6 @@
 ---
 name: geo-content-fact-writing
-description: 用于事实库驱动的文章生成、标题正文拆分、JSON 清理、占位符防护、反馈记忆、改写规则、合规检查和 GEO 内容任务流程。
+description: 当 GEO 内容生成出现企业事实未关联、标题没入标题框、正文残留 JSON 或占位符、反馈记忆未生效、发布检查阻塞记录或生成错误不可读时使用。
 ---
 
 # GEO Content Fact Writing

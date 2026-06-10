@@ -149,9 +149,10 @@ export const questionArchetypesApi = {
 // Corpus Items API
 export const corpusItemsApi = {
   list: (params) => api.get('/corpus-items', { params }),
-  create: (data) => api.post('/corpus-items', null, { params: data }),
+  create: (data) => api.post('/corpus-items', data),
+  ingest: (data) => api.post('/corpus-items/ingest', data, { timeout: AI_GENERATION_TIMEOUT }),
   get: (id) => api.get(`/corpus-items/${id}`),
-  update: (id, data) => api.put(`/corpus-items/${id}`, null, { params: data }),
+  update: (id, data) => api.put(`/corpus-items/${id}`, data),
   delete: (id) => api.delete(`/corpus-items/${id}`),
 };
 
@@ -235,6 +236,19 @@ export const writingMemoryApi = {
   foldProfile: (projectId, data = {}) => api.post(`/writing-memory/profiles/${projectId}/fold`, data, { timeout: AI_GENERATION_TIMEOUT }),
 };
 
+// Experience Skills API
+export const experienceSkillsApi = {
+  list: (params) => api.get('/experience-skills', { params }),
+  create: (data) => api.post('/experience-skills', data),
+  update: (id, data) => api.put(`/experience-skills/${id}`, data),
+  revise: (id, data) => api.post(`/experience-skills/${id}/revise`, data),
+  listVersions: (id) => api.get(`/experience-skills/${id}/versions`),
+  rollbackVersion: (id, version) => api.post(`/experience-skills/${id}/versions/${version}/rollback`),
+  delete: (id) => api.delete(`/experience-skills/${id}`),
+  listSuggestions: (params) => api.get('/experience-skills/suggestions', { params }),
+  approveSuggestion: (id) => api.post(`/experience-skills/suggestions/${id}/approve`),
+};
+
 // Questions API
 export const questionsApi = {
   listGroups: (params) => api.get('/questions/groups', { params }),
@@ -260,6 +274,7 @@ export const monitoringApi = {
   addSample: (runId, data) => api.post(`/monitoring/runs/${runId}/samples`, null, { params: data }),
   deleteSample: (id) => api.delete(`/monitoring/samples/${id}`),
   createContentTaskFromSample: (id, data = {}) => api.post(`/monitoring/samples/${id}/content-task`, data),
+  createReviewKnowledgeFromSample: (id, data = {}) => api.post(`/monitoring/samples/${id}/review-knowledge`, data),
   webbridgeSample: (runId, data, config = {}) => api.post(
     `/monitoring/runs/${runId}/webbridge-sample`,
     data,

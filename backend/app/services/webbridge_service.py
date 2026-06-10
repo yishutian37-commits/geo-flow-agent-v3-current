@@ -312,6 +312,7 @@ class WebBridgeService:
         page_answer = self._extract_answer(question, full_page_text, before_text)
         used_dom_answer_fallback = False
         if self._should_use_page_answer(visual_answer=answer_text, page_answer=page_answer):
+            previous_parse_warning = str(answer_result.get("parse_warning") or "").strip()
             answer_text = page_answer
             used_dom_answer_fallback = True
             answer_result = {
@@ -319,7 +320,11 @@ class WebBridgeService:
                 "has_answer": True,
                 "is_generating": False,
                 "answer_text": answer_text,
-                "parse_warning": "vision_used_complete_page_text",
+                "parse_warning": (
+                    f"vision_used_complete_page_text; {previous_parse_warning}"
+                    if previous_parse_warning
+                    else "vision_used_complete_page_text"
+                ),
             }
         if not self._looks_like_answer(answer_text):
             raise WebBridgeError("视觉识别模式未从截图中识别到有效回答，请适当增加等待时间或确认目标网页已经完成回答。")
@@ -358,7 +363,7 @@ class WebBridgeService:
             "\"reason\":\"一句话\"}。"
             "如果无法确认，confidence 低于 0.35。"
         )
-        return await self._call_vision_json(prompt=prompt, screenshot_data=screenshot_data, max_tokens=320)
+        return await self._call_vision_json(prompt=prompt, screenshot_data=screenshot_data, max_tokens=900)
 
     async def _wait_for_visual_answer(
         self,
@@ -373,6 +378,7 @@ class WebBridgeService:
         best_screenshot = ""
         last_answer = ""
         stable_hits = 0
+        last_parse_warning = ""
 
         for _ in range(max_checks):
             remaining = deadline - asyncio.get_event_loop().time()
@@ -382,10 +388,15 @@ class WebBridgeService:
             screenshot_data = await self._capture_screenshot_data(session=session)
             if not screenshot_data:
                 continue
-            parsed = await self._vision_extract_answer(
-                screenshot_data=screenshot_data,
-                question=question,
-            )
+            try:
+                parsed = await self._vision_extract_answer(
+                    screenshot_data=screenshot_data,
+                    question=question,
+                )
+            except WebBridgeError as exc:
+                last_parse_warning = str(exc)
+                best_screenshot = screenshot_data
+                continue
             answer = str(parsed.get("answer_text") or "").strip()
             if answer:
                 best = parsed
@@ -400,8 +411,18 @@ class WebBridgeService:
                     return parsed, screenshot_data
 
         if best:
+            if last_parse_warning and "parse_warning" not in best:
+                best = {**best, "parse_warning": last_parse_warning}
             return best, best_screenshot
         final_screenshot = await self._capture_screenshot_data(session=session)
+        if last_parse_warning:
+            return {
+                "has_answer": False,
+                "is_generating": False,
+                "answer_text": "",
+                "visible_sources": [],
+                "parse_warning": last_parse_warning,
+            }, final_screenshot or best_screenshot or ""
         return {}, final_screenshot or ""
 
     async def _vision_extract_answer(self, screenshot_data: str, question: str) -> Dict[str, Any]:
@@ -509,6 +530,11 @@ class WebBridgeService:
         return None
 
     def _looks_like_vision_model(self, config) -> bool:
+        explicit_supports_vision = getattr(config, "supports_vision", None)
+        if explicit_supports_vision is True:
+            return True
+        if explicit_supports_vision is False:
+            return False
         text = " ".join([
             str(getattr(config, "provider", "") or ""),
             str(getattr(config, "model", "") or ""),
@@ -518,11 +544,15 @@ class WebBridgeService:
         ]).lower()
         vision_markers = [
             "vision", "visual", "image", "multimodal", "multi-modal", "omni",
+            "视觉", "图像", "图片", "多模态", "截图",
             "gpt-4o", "gpt-4.1", "qwen-vl", "qvq", "glm-4v", "glm-4.5v",
             "moonshot-v1-8k-vision", "doubao-vision", "yi-vision", "step-1v",
             "mimo-v2.5", "mimo-v2-5", "mimo-v2-omni", "mimo-v2.5-omni",
             "claude-3", "gemini", "vl",
         ]
+        compact_text = re.sub(r"[^a-z0-9]+", "", text)
+        if "minimaxm3" in compact_text or ("minimax" in text and re.search(r"(^|[^a-z0-9])m3([^a-z0-9]|$)", text)):
+            return True
         return any(marker in text for marker in vision_markers)
 
     def _extract_llm_response_text(self, response) -> str:
@@ -531,7 +561,12 @@ class WebBridgeService:
         self._append_text_parts(content, parts)
         raw = getattr(response, "raw_response", None)
         if raw:
-            self._append_text_parts(raw, parts, keys={"content", "text", "output_text", "reasoning_content"})
+            raw_content_parts: List[str] = []
+            self._append_text_parts(raw, raw_content_parts, keys={"content", "text", "output_text"})
+            if raw_content_parts:
+                parts.extend(raw_content_parts)
+            elif not parts:
+                self._append_text_parts(raw, parts, keys={"reasoning_content"})
         return "\n".join(part for part in parts if part).strip()
 
     def _append_text_parts(self, value, parts: List[str], keys: Optional[set[str]] = None) -> None:
@@ -1095,6 +1130,8 @@ class WebBridgeService:
         ).lower()
         if re.search(r"文心|文心一言|ernie|yiyan|百度|baidu", text, flags=re.I):
             return '[class*="send__"]'
+        if re.search(r"qwen|tongyi|qianwen|aliyun", text, flags=re.I):
+            return 'button[aria-label="发送消息"],button[aria-label*="发送"],[role="button"][aria-label*="发送"]'
         return ""
 
     async def _fill_and_submit(
@@ -1223,7 +1260,16 @@ class WebBridgeService:
   if (!input) return JSON.stringify({{ok:false,text:''}});
   const text = ('value' in input ? input.value : '') || input.innerText || input.textContent || '';
   const normalized = String(text).replace(/\\s+/g, ' ').trim();
-  return JSON.stringify({{ok: Boolean(needle && normalized.includes(needle)), text: normalized.slice(-160)}});
+  const activeLooksLikeComposer = input === document.activeElement
+    || input.tagName === 'TEXTAREA'
+    || input.tagName === 'INPUT'
+    || input.getAttribute('role') === 'textbox';
+  const shortEnoughForDraft = normalized.length <= Math.max(needle.length + 120, 220);
+  return JSON.stringify({{
+    ok: Boolean(needle && activeLooksLikeComposer && shortEnoughForDraft && normalized.includes(needle)),
+    text: normalized.slice(-160),
+    textLength: normalized.length
+  }});
 }})()
 """
         try:
@@ -1624,6 +1670,11 @@ class WebBridgeService:
     def _clean_model_text(self, text: str) -> str:
         clean = (text or "").replace("\ufeff", "").strip()
         clean = re.sub(r"```(?:json|javascript|js)?\s*", "", clean, flags=re.I).replace("```", "").strip()
+        clean = re.sub(r"<think\b[^>]*>.*?</think>", "", clean, flags=re.I | re.S).strip()
+        open_think = re.search(r"<think\b[^>]*>", clean, flags=re.I)
+        if open_think:
+            json_start = clean.find("{", open_think.end())
+            clean = clean[json_start:].strip() if json_start >= 0 else clean[:open_think.start()].strip()
         clean = clean.replace("“", '"').replace("”", '"').replace("‘", "'").replace("’", "'")
         return clean
 
@@ -1860,6 +1911,8 @@ class WebBridgeService:
   const selector = {selector_literal};
   const question = {question_literal};
   const maxChars = {max_chars_literal};
+  const normalize = (value) => String(value || '').replace(/\\s+/g, ' ').trim();
+  const normalizeCompact = (value) => String(value || '').replace(/\\s+/g, '');
   const safeQuery = (value) => {{
     if (!value) return document.body;
     try {{
@@ -1869,7 +1922,56 @@ class WebBridgeService:
     }}
   }};
   const root = safeQuery(selector);
-  let text = (root ? root.innerText : document.body.innerText) || '';
+  const visible = (el) => {{
+    if (!el) return false;
+    const style = window.getComputedStyle(el);
+    const rect = el.getBoundingClientRect();
+    return style.visibility !== 'hidden'
+      && style.display !== 'none'
+      && rect.width > 80
+      && rect.height > 24;
+  }};
+  const noisePattern = /(深度分析需求并解答|你需要什么帮助|内容由AI生成|仅供参考|请仔细甄别|参考\\s*0|输入消息|新对话|我的收藏|智能翻译|网页工坊)/i;
+  const answerPattern = /(推荐|第一|第二|第三|靠谱|机构|培训|资质|证书|编号|CAAC|UOM|合规|地址|费用|通过率|建议|优先|理由|总结)/i;
+  const questionCompact = normalizeCompact(question);
+  const selectors = [
+    'article', 'main', 'section', '[role="article"]', '[data-message-author-role]',
+    '[class*="answer"]', '[class*="message"]', '[class*="markdown"]',
+    '[class*="content"]', '[class*="chat"]', '[class*="result"]', 'div'
+  ].join(',');
+  const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 1366;
+  const candidates = Array.from(root.querySelectorAll(selectors))
+    .filter((el) => visible(el))
+    .map((el) => {{
+      let text = normalize(el.innerText || el.textContent || '');
+      if (!text || text.length < 30) return null;
+      const compact = normalizeCompact(text);
+      const rect = el.getBoundingClientRect();
+      let answerText = text;
+      const questionIndex = questionCompact ? compact.lastIndexOf(questionCompact) : -1;
+      if (questionIndex >= 0) {{
+        const rawIndex = text.lastIndexOf(question);
+        if (rawIndex >= 0) answerText = normalize(text.slice(rawIndex + question.length));
+      }}
+      const answerCompact = normalizeCompact(answerText);
+      const hasQuestion = questionCompact && compact.includes(questionCompact);
+      const hasAnswerMarker = answerPattern.test(answerText);
+      const hasNoise = noisePattern.test(answerText);
+      let score = 0;
+      score += Math.min(answerCompact.length, 5000) / 18;
+      if (hasQuestion) score += 120;
+      if (hasAnswerMarker) score += 180;
+      if (/第一推荐|推荐：|我的建议|总结一句话/.test(answerText)) score += 160;
+      if (hasNoise) score -= 260;
+      if (answerCompact.length < 80) score -= 140;
+      if (rect.left < viewportWidth * 0.16 && rect.width < viewportWidth * 0.32) score -= 220;
+      if (el === document.body || el === document.documentElement) score -= 450;
+      return {{ el, text: answerText || text, score, length: answerCompact.length }};
+    }})
+    .filter(Boolean)
+    .filter((item) => item.length >= 40 && item.score > 0)
+    .sort((a, b) => b.score - a.score);
+  let text = candidates[0]?.text || ((root ? root.innerText : document.body.innerText) || '');
   if (question) {{
     const index = text.lastIndexOf(question);
     if (index >= 0) text = text.slice(index);
@@ -2420,6 +2522,22 @@ class WebBridgeService:
     def _looks_like_answer(self, answer: str) -> bool:
         compact = re.sub(r"\s+", "", answer or "")
         if len(compact) < 12:
+            return False
+        ui_noise_phrases = [
+            "深度分析需求并解答",
+            "你需要什么帮助",
+            "内容由AI生成",
+            "请仔细甄别",
+            "参考0",
+        ]
+        noise_hits = sum(1 for phrase in ui_noise_phrases if phrase in compact)
+        answer_markers = re.compile(
+            r"推荐|靠谱|机构|培训|资质|证书|编号|CAAC|UOM|合规|地址|费用|通过率|建议|优先|总结|理由|第一|第二|第三",
+            re.I,
+        )
+        if noise_hits >= 2 and len(compact) < 180 and not answer_markers.search(compact):
+            return False
+        if "你需要什么帮助" in compact and len(compact) < 120:
             return False
         ui_only_pattern = re.compile(
             r"^(发送|提交|输入消息|请输入|登录|注册|联网搜索|深度思考|换一换|重新生成|复制|点赞|点踩|分享|更多)+$",

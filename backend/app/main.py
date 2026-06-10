@@ -128,6 +128,112 @@ async def ensure_sqlite_model_columns(conn) -> None:
             existing_columns.add(column.name)
 
 
+async def backfill_experience_skill_versions(conn) -> None:
+    """Create an initial version snapshot for legacy experience skills."""
+    tables = (await conn.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))).fetchall()
+    table_names = {row[0] for row in tables}
+    if not {"experience_skills", "experience_skill_versions"}.issubset(table_names):
+        return
+
+    await conn.execute(
+        text(
+            """
+            UPDATE experience_skills
+            SET current_version = 1
+            WHERE current_version IS NULL
+            """
+        )
+    )
+    legacy_rows = (
+        await conn.execute(
+            text(
+                """
+                SELECT
+                    s.id,
+                    COALESCE(s.current_version, 1) AS version,
+                    s.name,
+                    s.scope,
+                    s.project_id,
+                    s.industry,
+                    s.trigger_scene,
+                    s.skill_type,
+                    s.content,
+                    s.status,
+                    s.confidence,
+                    s.source_refs_json,
+                    COALESCE(s.updated_at, s.created_at) AS created_at
+                FROM experience_skills s
+                WHERE NOT EXISTS (
+                    SELECT 1
+                    FROM experience_skill_versions v
+                    WHERE v.skill_id = s.id
+                )
+                """
+            )
+        )
+    ).mappings().all()
+    now = datetime.now(timezone.utc)
+    for row in legacy_rows:
+        await conn.execute(
+            text(
+                """
+                INSERT INTO experience_skill_versions (
+                    id,
+                    skill_id,
+                    version,
+                    name,
+                    scope,
+                    project_id,
+                    industry,
+                    trigger_scene,
+                    skill_type,
+                    content,
+                    status,
+                    confidence,
+                    change_type,
+                    revision_reason,
+                    source_refs_json,
+                    created_at
+                )
+                VALUES (
+                    :id,
+                    :skill_id,
+                    :version,
+                    :name,
+                    :scope,
+                    :project_id,
+                    :industry,
+                    :trigger_scene,
+                    :skill_type,
+                    :content,
+                    :status,
+                    :confidence,
+                    'legacy_backfill',
+                    '历史技能初始化版本',
+                    :source_refs_json,
+                    :created_at
+                )
+                """
+            ),
+            {
+                "id": str(uuid.uuid4()),
+                "skill_id": row["id"],
+                "version": row["version"],
+                "name": row["name"],
+                "scope": row["scope"],
+                "project_id": row["project_id"],
+                "industry": row["industry"],
+                "trigger_scene": row["trigger_scene"],
+                "skill_type": row["skill_type"],
+                "content": row["content"],
+                "status": row["status"],
+                "confidence": row["confidence"],
+                "source_refs_json": row["source_refs_json"],
+                "created_at": row["created_at"] or now,
+            },
+        )
+
+
 async def ensure_runtime_schema(conn):
     """Small SQLite migrations for desktop/dev databases created before model updates."""
     if "sqlite" not in settings.DATABASE_URL.lower():
@@ -170,6 +276,11 @@ async def ensure_runtime_schema(conn):
             await conn.execute(text("ALTER TABLE monitoring_samples ADD COLUMN sources_json TEXT"))
         if "analysis_json" not in column_names:
             await conn.execute(text("ALTER TABLE monitoring_samples ADD COLUMN analysis_json TEXT"))
+    if "content_tasks" in table_names:
+        columns = (await conn.execute(text("PRAGMA table_info(content_tasks)"))).fetchall()
+        column_names = {row[1] for row in columns}
+        if "knowledge_asset_ids" not in column_names:
+            await conn.execute(text("ALTER TABLE content_tasks ADD COLUMN knowledge_asset_ids TEXT"))
     if "questions" in table_names:
         columns = (await conn.execute(text("PRAGMA table_info(questions)"))).fetchall()
         column_names = {row[1] for row in columns}
@@ -177,7 +288,10 @@ async def ensure_runtime_schema(conn):
             ("question_type", "VARCHAR(100) NOT NULL DEFAULT 'brand_reputation'"),
             ("tags", "TEXT"),
             ("keyword_breakdown", "TEXT"),
+            ("keyword_layer", "VARCHAR(100)"),
             ("question_formula", "VARCHAR(500)"),
+            ("knowledge_need", "TEXT"),
+            ("search_asset_type", "VARCHAR(100)"),
             ("business_value", "VARCHAR(100)"),
             ("evidence_support", "TEXT"),
             ("content_actionability", "TEXT"),
@@ -188,6 +302,7 @@ async def ensure_runtime_schema(conn):
             if column_name not in column_names:
                 await conn.execute(text(f"ALTER TABLE questions ADD COLUMN {column_name} {column_type}"))
     await ensure_sqlite_model_columns(conn)
+    await backfill_experience_skill_versions(conn)
 
 
 async def repair_reserved_local_user_emails(db: AsyncSession) -> int:

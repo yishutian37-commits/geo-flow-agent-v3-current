@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import projects, brands, brand_facts, corpus_items, source_assets, channel_accounts, publish_records, questions, monitoring, reports, ai_models, dashboard, content_tasks, content_drafts, writing_memory, approvals, model_targets, baseline_runs, sentiments, auth, users, platform_policies, question_archetypes
+from app.api.v1.endpoints import projects, brands, brand_facts, corpus_items, source_assets, channel_accounts, publish_records, questions, monitoring, reports, ai_models, dashboard, content_tasks, content_drafts, writing_memory, experience_skills, approvals, model_targets, baseline_runs, sentiments, auth, users, platform_policies, question_archetypes
 
 api_router = APIRouter()
 
@@ -17,6 +17,7 @@ api_router.include_router(questions.router, prefix="/questions", tags=["Question
 api_router.include_router(content_tasks.router, prefix="/content-tasks", tags=["Content Tasks"])
 api_router.include_router(content_drafts.router, prefix="/content-drafts", tags=["Content Drafts"])
 api_router.include_router(writing_memory.router, prefix="/writing-memory", tags=["Writing Memory"])
+api_router.include_router(experience_skills.router, prefix="/experience-skills", tags=["Experience Skills"])
 api_router.include_router(approvals.router, prefix="/approvals", tags=["Approvals"])
 api_router.include_router(model_targets.router, prefix="/model-targets", tags=["Model Targets"])
 api_router.include_router(baseline_runs.router, prefix="/baseline-runs", tags=["Baseline Runs"])

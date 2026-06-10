@@ -17,6 +17,8 @@ if TYPE_CHECKING:
     from app.models.brand_fact import BrandFact
     from app.models.brand import Brand
     from app.models.project import Project
+    from app.models.corpus_item import CorpusItem
+    from app.models.experience_skill import ExperienceSkill
     from app.models.writing_memory import ContentFeedback, WritingProfile
 
 
@@ -509,6 +511,8 @@ class ProductionAgent:
         writing_profile: Optional[WritingProfile] = None,
         active_rules: Optional[List[ContentFeedback]] = None,
         question_context: Optional[Dict[str, Any]] = None,
+        knowledge_assets: Optional[List[CorpusItem]] = None,
+        experience_skills: Optional[List[ExperienceSkill]] = None,
         feedback_context: Optional[str] = None,
         source_draft_context: Optional[str] = None,
     ) -> str:
@@ -593,6 +597,27 @@ class ProductionAgent:
                 if value
             )
 
+        knowledge_assets_text = "\n".join([
+            (
+                f"- [{getattr(item, 'knowledge_layer', '')}/{getattr(item, 'business_use', '')}/"
+                f"{getattr(item, 'evidence_level', '')}] {getattr(item, 'title', '') or '未命名知识资产'}："
+                f"{(getattr(item, 'content', '') or '')[:600]}"
+                f"{' 来源：' + getattr(item, 'source_url', '') if getattr(item, 'source_url', '') else ''}"
+            )
+            for item in (knowledge_assets or [])
+            if getattr(item, "content", None)
+        ]) or "暂无"
+
+        experience_skills_text = "\n".join([
+            (
+                f"{index + 1}. [{getattr(item, 'scope', '')}/{getattr(item, 'trigger_scene', '')}/"
+                f"{getattr(item, 'skill_type', '')}] {getattr(item, 'name', '') or '未命名经验技能'}："
+                f"{getattr(item, 'content', '')}"
+            )
+            for index, item in enumerate(experience_skills or [])
+            if getattr(item, "content", None) and getattr(item, "status", "active") == "active"
+        ]) or "暂无"
+
         publishable_fact_contract = (
             "有。可以引用已确认事实。"
             if has_publishable_facts
@@ -612,6 +637,8 @@ class ProductionAgent:
             "platform_policy_text": platform_policy_prompt_text(platform),
             "project_text": project_text or "暂无",
             "question_text": question_text or "暂无",
+            "knowledge_assets_text": knowledge_assets_text,
+            "experience_skills_text": experience_skills_text,
             "source_draft_context": source_draft_context or "暂无",
             "feedback_context": feedback_context or "暂无",
             "facts_text": facts_text,
