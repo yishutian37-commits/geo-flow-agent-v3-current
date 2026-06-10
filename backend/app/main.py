@@ -56,6 +56,11 @@ def _replacement_email_for_reserved_local(
     return f"{safe_name}.{suffix}@geoflow.app"
 
 
+def _env_flag_enabled(name: str, default: str = "0") -> bool:
+    return os.getenv(name, default).strip().lower() in {"1", "true", "yes", "on"}
+
+
+SEED_DEFAULT_PROJECT_OWNER = _env_flag_enabled("GEO_SEED_DEFAULT_PROJECT_OWNER")
 DEFAULT_PROJECT_OWNER_USERNAME = os.getenv("GEO_DEFAULT_PROJECT_OWNER_USERNAME", "pm01")
 _RAW_DEFAULT_PROJECT_OWNER_EMAIL = os.getenv("GEO_DEFAULT_PROJECT_OWNER_EMAIL", "pm01@geoflow.app")
 DEFAULT_PROJECT_OWNER_EMAIL = (
@@ -63,7 +68,7 @@ DEFAULT_PROJECT_OWNER_EMAIL = (
     if _email_uses_reserved_local_domain(_RAW_DEFAULT_PROJECT_OWNER_EMAIL)
     else _RAW_DEFAULT_PROJECT_OWNER_EMAIL
 )
-DEFAULT_PROJECT_OWNER_PASSWORD = os.getenv("GEO_DEFAULT_PROJECT_OWNER_PASSWORD", "Pm@20260529")
+DEFAULT_PROJECT_OWNER_PASSWORD = os.getenv("GEO_DEFAULT_PROJECT_OWNER_PASSWORD", "")
 DEFAULT_PROJECT_OWNER_FULL_NAME = os.getenv("GEO_DEFAULT_PROJECT_OWNER_FULL_NAME", "项目负责人")
 
 
@@ -337,8 +342,17 @@ async def repair_reserved_local_user_emails(db: AsyncSession) -> int:
 
 
 async def ensure_default_project_owner() -> None:
-    """Ensure shared/local desktop installs have a ready project-owner login."""
+    """Optionally seed a development project-owner login.
+
+    Normal desktop installs use the first-run admin bootstrap flow. A fixed
+    project-owner account is only created when explicitly enabled with
+    GEO_SEED_DEFAULT_PROJECT_OWNER=1 and a non-empty
+    GEO_DEFAULT_PROJECT_OWNER_PASSWORD.
+    """
+    if not SEED_DEFAULT_PROJECT_OWNER:
+        return
     if not DEFAULT_PROJECT_OWNER_USERNAME or not DEFAULT_PROJECT_OWNER_PASSWORD:
+        print("[Auth] Skipping default project owner seed: username or password is empty")
         return
 
     async with AsyncSessionLocal() as db:
@@ -436,10 +450,10 @@ app.add_middleware(
 )
 
 
-# 全局异常处理
+# Global exception handlers
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    """处理请求参数验证错误"""
+    """Handle request validation errors."""
     return JSONResponse(
         status_code=422,
         content={
@@ -452,9 +466,9 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
 @app.exception_handler(SQLAlchemyError)
 async def sqlalchemy_exception_handler(request: Request, exc: SQLAlchemyError):
-    """处理数据库错误"""
+    """Handle database errors."""
     error_msg = str(exc)
-    # 生产环境不暴露详细SQL错误
+    # Do not expose SQL details outside debug mode.
     if not settings.DEBUG:
         error_msg = "数据库操作失败，请稍后重试"
     return JSONResponse(
@@ -468,7 +482,7 @@ async def sqlalchemy_exception_handler(request: Request, exc: SQLAlchemyError):
 
 @app.exception_handler(ValueError)
 async def value_error_handler(request: Request, exc: ValueError):
-    """处理业务逻辑ValueError"""
+    """Handle business validation errors."""
     return JSONResponse(
         status_code=400,
         content={
@@ -479,7 +493,7 @@ async def value_error_handler(request: Request, exc: ValueError):
 
 @app.exception_handler(Exception)
 async def general_exception_handler(request: Request, exc: Exception):
-    """处理所有未捕获的异常"""
+    """Handle uncaught exceptions."""
     import traceback
     error_msg = str(exc)
     stack_trace = traceback.format_exc()
@@ -504,8 +518,8 @@ app.include_router(api_router, prefix="/api/v1")
 
 @app.get("/health", tags=["Health"])
 async def health_check():
-    """健康检查"""
-    # 简单检查数据库连接
+    """Health check."""
+    # Simple database connectivity check.
     try:
         from sqlalchemy import text
         async with async_engine.connect() as conn:

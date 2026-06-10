@@ -3,6 +3,7 @@
 用于开发和测试环境初始化示例数据
 """
 import asyncio
+import os
 from datetime import datetime, timezone, timedelta
 from uuid import uuid4
 
@@ -22,6 +23,16 @@ from app.core.security import get_password_hash
 
 async def seed_data():
     """初始化种子数据"""
+    if os.getenv("GEO_ALLOW_SAMPLE_SEED", "").strip().lower() not in {"1", "true", "yes", "on"}:
+        raise RuntimeError("Sample seed is disabled. Set GEO_ALLOW_SAMPLE_SEED=1 to create demo data.")
+
+    admin_password = os.getenv("GEO_SAMPLE_ADMIN_PASSWORD")
+    owner_password = os.getenv("GEO_SAMPLE_PROJECT_OWNER_PASSWORD")
+    if not admin_password or not owner_password:
+        raise RuntimeError(
+            "Set GEO_SAMPLE_ADMIN_PASSWORD and GEO_SAMPLE_PROJECT_OWNER_PASSWORD before seeding demo users."
+        )
+
     async with async_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
@@ -33,7 +44,7 @@ async def seed_data():
             id=uuid4(),
             username="admin",
             email="admin@geoflow.app",
-            hashed_password=get_password_hash("admin123"),
+            hashed_password=get_password_hash(admin_password),
             full_name="系统管理员",
             role="admin",
             is_active=True,
@@ -44,7 +55,7 @@ async def seed_data():
             id=uuid4(),
             username="pm01",
             email="pm01@geoflow.app",
-            hashed_password=get_password_hash("pm0123456"),
+            hashed_password=get_password_hash(owner_password),
             full_name="项目负责人",
             role="project_owner",
             is_active=True,
