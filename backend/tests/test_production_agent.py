@@ -163,3 +163,55 @@ def test_article_prompt_includes_active_experience_skills():
     assert "经验技能" in prompt
     assert "本地口语化写作" in prompt
     assert "多写本地场景和人的口吻" in prompt
+
+
+def test_article_prompt_formats_writing_profile_as_readable_execution_rules():
+    agent = ProductionAgent()
+    profile = SimpleNamespace(
+        version=3,
+        style_preferences=json.dumps(
+            {
+                "tone": "自然、口语化，避免官方宣传腔",
+                "sentence_style": "短句为主，主动语态",
+                "banned_words": ["第一", "最好", "专业"],
+            },
+            ensure_ascii=False,
+        ),
+        title_preferences=json.dumps(
+            {"must_contain": ["品牌名", "地区词"], "preferred_style": "搜索友好、克制"},
+            ensure_ascii=False,
+        ),
+        constraints=json.dumps(
+            {"no_false_promises": True, "accuracy_required": ["资质", "证书编号"]},
+            ensure_ascii=False,
+        ),
+        platform_habits=None,
+    )
+
+    prompt = agent.generate_article_prompt(
+        SimpleNamespace(content_type="brand_intro", layer="pool_layer", priority="medium"),
+        [],
+        platform="media",
+        project=SimpleNamespace(name="画像测试项目", industry="local_service", region="包头", notes=""),
+        brand=SimpleNamespace(brand_name="画像测试品牌", company_name="", description=""),
+        writing_profile=profile,
+    )
+
+    assert "画像版本: v3" in prompt
+    assert "整体语气: 自然、口语化，避免官方宣传腔" in prompt
+    assert "必须回避的词或表达: 第一、最好、专业" in prompt
+    assert "如确需表达客观事实，改成有来源、有边界的温和表述" in prompt
+
+
+def test_article_prompt_treats_platform_policy_as_hard_constraint():
+    agent = ProductionAgent()
+    prompt = agent.generate_article_prompt(
+        SimpleNamespace(content_type="brand_intro", layer="pool_layer", priority="medium"),
+        [],
+        platform="baijiahao",
+        project=SimpleNamespace(name="平台规则测试项目", industry="local_service", region="包头", notes=""),
+        brand=SimpleNamespace(brand_name="平台规则测试品牌", company_name="", description=""),
+    )
+
+    assert "平台政策是硬约束" in prompt
+    assert "不合格不得输出" in prompt

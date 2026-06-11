@@ -70,7 +70,7 @@ async def create_publish_record(
     if data.status == "published":
         if not draft:
             raise HTTPException(status_code=400, detail="记录已发布内容时必须绑定具体草稿版本")
-        validation = await _validate_and_record_publish_check(db, draft, task)
+        validation = await _validate_and_record_publish_check(db, draft, task, platform_override=data.platform)
         if not validation.get("can_publish") and not data.force_save:
             raise HTTPException(
                 status_code=400,
@@ -135,7 +135,7 @@ async def assist_publish_with_webbridge(
         .where(Brand.project_id == task.project_id)
     )
     brand_facts = list(facts_result.scalars().all())
-    validation = ProductionAgent().validate_publish_ready(draft, brand_facts)
+    validation = ProductionAgent().validate_publish_ready(draft, brand_facts, platform_override=platform)
     content_package = {
         "task_id": str(task.id),
         "draft_id": str(draft.id),
@@ -304,6 +304,7 @@ async def _validate_and_record_publish_check(
     db: AsyncSession,
     draft: ContentDraft,
     task: ContentTask,
+    platform_override: Optional[str] = None,
 ) -> dict:
     facts_result = await db.execute(
         select(BrandFact)
@@ -311,7 +312,7 @@ async def _validate_and_record_publish_check(
         .where(Brand.project_id == task.project_id)
     )
     brand_facts = list(facts_result.scalars().all())
-    validation = ProductionAgent().validate_publish_ready(draft, brand_facts)
+    validation = ProductionAgent().validate_publish_ready(draft, brand_facts, platform_override=platform_override)
     check = ComplianceCheck(
         draft_id=draft.id,
         check_type="publish_ready",

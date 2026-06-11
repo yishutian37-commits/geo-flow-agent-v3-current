@@ -38,6 +38,58 @@ def json_dumps_safe(value: Dict[str, Any]) -> str:
     return json.dumps(value or {}, ensure_ascii=False, indent=2)
 
 
+def _format_dict_value(value: Any) -> str:
+    if isinstance(value, dict):
+        parts = []
+        for key, item in value.items():
+            if item in (None, "", [], {}):
+                continue
+            parts.append(f"{key}: {_format_dict_value(item)}")
+        return "；".join(parts)
+    if isinstance(value, list):
+        return "、".join(str(item) for item in value if item not in (None, ""))
+    if isinstance(value, bool):
+        return "是" if value else "否"
+    return str(value)
+
+
+def format_writing_profile_for_prompt(writing_profile: Any) -> str:
+    if not writing_profile:
+        return ""
+
+    style = safe_json_loads(getattr(writing_profile, "style_preferences", None))
+    title = safe_json_loads(getattr(writing_profile, "title_preferences", None))
+    constraints = safe_json_loads(getattr(writing_profile, "constraints", None))
+    platform_habits = safe_json_loads(getattr(writing_profile, "platform_habits", None))
+
+    lines = [
+        f"- 画像版本: v{getattr(writing_profile, 'version', '') or 1}",
+    ]
+    if style:
+        if style.get("tone"):
+            lines.append(f"- 整体语气: {style['tone']}")
+        if style.get("sentence_style"):
+            lines.append(f"- 句式要求: {style['sentence_style']}")
+        if style.get("banned_words"):
+            lines.append(
+                "- 必须回避的词或表达: "
+                f"{_format_dict_value(style['banned_words'])}。如确需表达客观事实，改成有来源、有边界的温和表述。"
+            )
+    if title:
+        if title.get("must_contain"):
+            lines.append(f"- 标题需包含: {_format_dict_value(title['must_contain'])}")
+        if title.get("preferred_style"):
+            lines.append(f"- 标题风格: {title['preferred_style']}")
+        if title.get("examples"):
+            lines.append(f"- 标题参考: {_format_dict_value(title['examples'])}")
+    if constraints:
+        lines.append(f"- 合规边界: {_format_dict_value(constraints)}")
+    if platform_habits:
+        lines.append(f"- 平台习惯: {_format_dict_value(platform_habits)}")
+
+    return "\n".join(line for line in lines if line.strip())
+
+
 class ProductionAgent:
     """
     内容生产 Agent
@@ -554,15 +606,7 @@ class ProductionAgent:
 
         has_publishable_facts = facts_text and not facts_text.startswith("暂无")
 
-        profile_text = ""
-        if writing_profile:
-            profile_text = json_dumps_safe({
-                "style_preferences": safe_json_loads(getattr(writing_profile, "style_preferences", None)),
-                "title_preferences": safe_json_loads(getattr(writing_profile, "title_preferences", None)),
-                "constraints": safe_json_loads(getattr(writing_profile, "constraints", None)),
-                "platform_habits": safe_json_loads(getattr(writing_profile, "platform_habits", None)),
-                "version": getattr(writing_profile, "version", None),
-            })
+        profile_text = format_writing_profile_for_prompt(writing_profile)
 
         memory_feedback = []
         for item in (active_rules or []):
@@ -755,6 +799,61 @@ class ProductionAgent:
         """
         return check_platform_policy(draft_text, platform)
 
+    def generate_platform_rewrite_prompt(
+        self,
+        *,
+        title: str,
+        body: str,
+        platform: Optional[str],
+        platform_issues: List[Dict[str, Any]],
+    ) -> str:
+        """
+        针对平台高风险问题进行一次性修复重写。
+        只修平台违规和机器残留，不扩写新事实，避免重写时漂移。
+        """
+        issues_text = "\n".join(
+            f"- {item.get('name', '平台问题')}: {item.get('message', '')}"
+            for item in platform_issues
+        ) or "- 存在平台高风险问题"
+        policy_text = platform_policy_prompt_text(platform)
+        return f"""你需要对下面这篇文章进行一次平台合规修复重写。
+
+## 平台高风险问题
+{issues_text}
+
+## 平台规则
+{policy_text}
+
+## 修复要求
+1. 只修复平台违规、机器格式残留、引流/高危表达和标题正文格式问题。
+2. 不新增资质、价格、地址、案例、证书编号、通过率、联系方式等事实。
+3. 保持原主题、原平台、原品牌主体和原内容意图，不要改成另一篇文章。
+4. 正文必须是可直接发布的纯文本，不要出现 JSON、代码围栏、Markdown 标题、FACT_REFS、COMPLIANCE_CHECK。
+5. 标题只放在 JSON 元数据 title_candidates 中，不要在正文第一行重复标题。
+
+## 原标题
+{title or '未命名草稿'}
+
+## 原正文
+{body or ''}
+
+## 输出格式
+```json
+{{
+  "title_candidates": ["修复后的标题"],
+  "aida": {{
+    "attention": "修复说明",
+    "interest": "修复说明",
+    "desire": "修复说明",
+    "action": "修复说明"
+  }},
+  "platform_notes": "说明已按平台规则修复"
+}}
+```
+---FULL_CONTENT---
+这里写修复后的纯文本正文。
+"""
+
     def generate_fact_references(
         self,
         draft_text: str,
@@ -810,6 +909,7 @@ class ProductionAgent:
         self,
         draft: ContentDraft,
         brand_facts: List[BrandFact],
+        platform_override: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         验证草稿是否可进入 Publish Ready 状态
@@ -838,7 +938,7 @@ class ProductionAgent:
         # 4. 平台政策检查
         platform_issues = self.check_platform_compliance(
             f"{draft.title or ''}\n{draft.body or ''}",
-            getattr(draft, "platform", None),
+            platform_override or getattr(draft, "platform", None),
         )
         issues.extend(platform_issues)
 

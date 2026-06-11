@@ -79,6 +79,13 @@ def _next_version(version: Optional[str]) -> str:
         return f"{version}.1"
 
 
+def _high_risk_platform_issues(issues: List[dict]) -> List[dict]:
+    return [
+        item for item in (issues or [])
+        if item.get("severity") == "high" and str(item.get("type", "")).startswith("platform_")
+    ]
+
+
 def _format_fact_refs(fact_refs: list[dict], raw_refs: Optional[str] = None) -> str:
     lines = []
     for index, ref in enumerate(fact_refs, start=1):
@@ -282,12 +289,16 @@ async def generate_draft(
         select(ContentFeedback)
         .where(
             ContentFeedback.project_id == task.project_id,
-            ContentFeedback.is_folded == False,  # noqa: E712
+            or_(
+                ContentFeedback.is_folded == False,  # noqa: E712
+                ContentFeedback.rule_text.isnot(None),
+                ContentFeedback.diff_summary.isnot(None),
+            ),
         )
-        .order_by(ContentFeedback.created_at.desc())
+        .order_by(ContentFeedback.is_folded.asc(), ContentFeedback.created_at.desc())
         .limit(30)
     )
-    active_rules = list(feedback_result.scalars().all())
+    memory_rules = list(feedback_result.scalars().all())
 
     skill_scenes = ["article_writing", "rewrite"]
     skill_scope_filters = [
@@ -368,7 +379,7 @@ async def generate_draft(
             project=project,
             brand=brand,
             writing_profile=writing_profile,
-            active_rules=active_rules,
+            active_rules=memory_rules,
             question_context=question_context,
             knowledge_assets=knowledge_assets,
             experience_skills=experience_skills,
@@ -392,6 +403,14 @@ async def generate_draft(
         parsed = ProductionAgent.parse_llm_output(llm_response)
         title = parsed["title"] or "未命名草稿"
         body = parsed["body"] or llm_response
+        platform_rewrite = {
+            "attempted": False,
+            "attempts": 0,
+            "max_attempts": 2,
+            "resolved": None,
+            "initial_high_risk_count": 0,
+            "remaining_high_risk_count": 0,
+        }
 
         # 合规检查
         compliance_issues = agent.check_compliance(f"{title}\n{body}", project_facts)
@@ -403,6 +422,56 @@ async def generate_draft(
                 "severity": "medium",
                 "message": "当前项目没有可公开使用的已确认品牌事实，本次生成的是资料不足版草稿，发布前需补充并确认资质、产品、地址、案例等基础事实。",
             })
+
+        high_risk_platform_issues = _high_risk_platform_issues(compliance_issues)
+        platform_rewrite["initial_high_risk_count"] = len(high_risk_platform_issues)
+        while high_risk_platform_issues and platform_rewrite["attempts"] < platform_rewrite["max_attempts"]:
+            platform_rewrite["attempted"] = True
+            platform_rewrite["attempts"] += 1
+            try:
+                rewrite_prompt = agent.generate_platform_rewrite_prompt(
+                    title=title,
+                    body=body,
+                    platform=req.platform,
+                    platform_issues=high_risk_platform_issues,
+                )
+                rewritten_response = await agent._call_llm(
+                    system_prompt="你是严格的平台合规编辑。只修复平台违规和机器格式残留，不新增未经确认事实。",
+                    user_prompt=rewrite_prompt,
+                    agent_name="production_agent_platform_rewrite",
+                    project_id=task.project_id,
+                    temperature=0.25,
+                )
+                rewritten_parsed = ProductionAgent.parse_llm_output(rewritten_response)
+                title = rewritten_parsed["title"] or title
+                body = rewritten_parsed["body"] or body
+                parsed = rewritten_parsed
+                llm_response = rewritten_response
+                compliance_issues = agent.check_compliance(f"{title}\n{body}", project_facts)
+                compliance_issues.extend(agent.check_platform_compliance(f"{title}\n{body}", req.platform))
+                if not publishable_facts:
+                    compliance_issues.insert(0, {
+                        "type": "missing_publishable_facts",
+                        "name": "资料完整性提示",
+                        "severity": "medium",
+                        "message": "当前项目没有可公开使用的已确认品牌事实，本次生成的是资料不足版草稿，发布前需补充并确认资质、产品、地址、案例等基础事实。",
+                    })
+                high_risk_platform_issues = _high_risk_platform_issues(compliance_issues)
+                platform_rewrite["remaining_high_risk_count"] = len(high_risk_platform_issues)
+                platform_rewrite["resolved"] = not high_risk_platform_issues
+            except Exception as rewrite_error:
+                platform_rewrite["resolved"] = False
+                platform_rewrite["error"] = str(rewrite_error)
+                compliance_issues.append({
+                    "type": "platform_auto_rewrite_failed",
+                    "name": "平台自动修复失败",
+                    "severity": "medium",
+                    "message": f"检测到平台高风险问题，但自动二次重写失败：{rewrite_error}",
+                })
+                break
+        if platform_rewrite["attempted"] and high_risk_platform_issues:
+            platform_rewrite["remaining_high_risk_count"] = len(high_risk_platform_issues)
+            platform_rewrite["resolved"] = False
 
         # 事实引用检查
         fact_refs = agent.generate_fact_references(body, publishable_facts)
@@ -442,9 +511,13 @@ async def generate_draft(
             },
             "memory_used": {
                 "profile_version": writing_profile.version if writing_profile else None,
-                "active_rules": len(active_rules),
-                "active_feedbacks": len(active_rules),
+                "active_rules": len([item for item in memory_rules if not item.is_folded]),
+                "historical_rules": len([item for item in memory_rules if item.is_folded]),
+                "active_feedbacks": len([item for item in memory_rules if not item.is_folded]),
+                "writing_profile_used": bool(writing_profile),
+                "experience_skills": len(experience_skills),
             },
+            "platform_rewrite": platform_rewrite,
             "llm_raw_output": llm_response,
         }
 

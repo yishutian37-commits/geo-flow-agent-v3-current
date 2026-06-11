@@ -9,6 +9,49 @@ from typing import Any, Dict, List, Optional
 
 POLICY_PATH = Path(__file__).resolve().parents[1] / "data" / "platform_policies.json"
 
+PUBLIC_SEARCH_PLATFORMS = {
+    "media", "baijiahao", "zhihu", "toutiao", "netease", "sina", "penguin"
+}
+
+SOFT_AD_PATTERNS = [
+    "值得深入了解", "值得一说", "值得关注", "不错的主意", "频繁出现",
+    "发展速度很快", "性价比", "自然有保障", "有保障", "可信度比较高",
+    "贴心", "放心选择", "首选", "强烈推荐", "很适合你", "名字会频繁出现",
+]
+
+PLATFORM_STYLE_RULES = {
+    "toutiao": {
+        "name": "今日头条信息流风格",
+        "opening_any": ["先看", "重点", "结论", "建议", "判断", "要看", "避坑", "怎么选", "如果"],
+        "evidence_any": ["资质", "证书", "场地", "费用", "案例", "核验", "标准", "依据", "建议"],
+        "message": "今日头条更适合问题切入、结论前置、短段落和实用判断标准，当前正文更像品牌软文或泛介绍。",
+    },
+    "baijiahao": {
+        "name": "百度百家号搜索友好风格",
+        "opening_any": ["怎么", "如何", "判断", "选择", "核验", "靠谱吗", "哪家", "为什么"],
+        "evidence_any": ["资质", "证书", "编号", "地址", "费用", "标准", "依据", "核验"],
+        "message": "百度百家号更适合搜索问答、事实证据和核验路径，当前正文的问题承接或证据导向不足。",
+    },
+    "zhihu": {
+        "name": "知乎回答风格",
+        "opening_any": ["先说结论", "这个问题", "判断", "建议", "看情况", "适合", "不适合"],
+        "evidence_any": ["原因", "标准", "依据", "风险", "场景", "如果", "建议"],
+        "message": "知乎更像理性回答和分场景分析，当前正文解释链路或判断标准不足。",
+    },
+    "media": {
+        "name": "媒体稿客观风格",
+        "opening_any": ["公开资料", "据了解", "显示", "位于", "成立", "提供", "服务"],
+        "evidence_any": ["资质", "案例", "数据", "基地", "产品", "服务", "公开资料"],
+        "message": "媒体稿应保持第三方客观叙述，减少导购口吻和主观推荐。",
+    },
+    "xiaohongshu": {
+        "name": "小红书笔记风格",
+        "opening_any": ["如果你", "我", "体验", "避坑", "适合", "不适合", "先说"],
+        "evidence_any": ["体验", "注意", "建议", "适合", "避坑", "价格", "地址"],
+        "message": "小红书更适合场景化体验笔记和避坑提醒，当前正文缺少笔记感或用户场景。",
+    },
+}
+
 
 @lru_cache(maxsize=1)
 def load_platform_policies() -> Dict[str, Dict[str, Any]]:
@@ -73,12 +116,98 @@ def platform_policy_prompt_text(platform: Optional[str]) -> str:
     return "\n".join(lines)
 
 
+def _compact(value: str) -> str:
+    return re.sub(r"\s+", "", value or "")
+
+
+def _paragraphs(content: str) -> List[str]:
+    return [item.strip() for item in re.split(r"\n\s*\n+", content or "") if item.strip()]
+
+
+def _contains_any(content: str, words: List[str]) -> bool:
+    compact = _compact(content)
+    return any(word and word in compact for word in words)
+
+
+def _platform_style_issues(content: str, platform: Optional[str], policy: Dict[str, Any]) -> List[Dict[str, Any]]:
+    key = (platform or "media").strip()
+    paragraphs = _paragraphs(content)
+    first_paragraph = paragraphs[0] if paragraphs else content[:220]
+    compact = _compact(content)
+    issues: List[Dict[str, Any]] = []
+
+    soft_ad_hits = [item for item in SOFT_AD_PATTERNS if item in compact]
+    if soft_ad_hits and key in PUBLIC_SEARCH_PLATFORMS:
+        issues.append({
+            "type": "platform_style_mismatch",
+            "name": "平台风格不匹配",
+            "severity": "high",
+            "platform": key,
+            "message": (
+                f"{policy.get('name', key)}不适合明显软广或主观推荐口吻，"
+                f"建议改成问题切入、判断标准和事实依据。命中表达：{', '.join(soft_ad_hits[:6])}"
+            ),
+        })
+        return issues
+
+    rule = PLATFORM_STYLE_RULES.get(key)
+    if not rule:
+        return issues
+
+    missing = []
+    if rule.get("opening_any") and not _contains_any(first_paragraph, rule["opening_any"]):
+        missing.append("开头没有明显的问题切入/结论前置")
+    if rule.get("evidence_any") and not _contains_any(content, rule["evidence_any"]):
+        missing.append("正文缺少平台需要的证据或判断标准")
+
+    if missing:
+        issues.append({
+            "type": "platform_style_mismatch",
+            "name": rule.get("name", "平台风格不匹配"),
+            "severity": "high",
+            "platform": key,
+            "message": f"{rule.get('message')}问题：{'；'.join(missing)}。",
+        })
+    return issues
+
+
 def check_platform_policy(text: str, platform: Optional[str]) -> List[Dict[str, Any]]:
     policy = get_platform_policy(platform)
     content = text or ""
     issues: List[Dict[str, Any]] = []
     compact_text = re.sub(r"\s+", "", content)
     word_count = len(re.findall(r"[\u4e00-\u9fff]", content))
+
+    format_artifacts: List[str] = []
+    if re.search(r"(?m)^\s{0,3}#{1,6}\s+\S+", content):
+        format_artifacts.append("Markdown标题")
+    artifact_patterns = [
+        ("代码围栏", "```"),
+        ("FULL_CONTENT分隔符", "---FULL_CONTENT---"),
+        ("FACT_REFS机器段落", "[FACT_REFS]"),
+        ("COMPLIANCE_CHECK机器段落", "[COMPLIANCE_CHECK]"),
+        ("JSON元数据", "title_candidates"),
+        ("JSON元数据", "platform_notes"),
+    ]
+    for label, marker in artifact_patterns:
+        if marker in content:
+            format_artifacts.append(label)
+    if re.match(r"^\s*\{", content) and re.search(r"\"(?:title_candidates|full_content|platform_notes)\"", content):
+        format_artifacts.append("JSON正文残留")
+    if format_artifacts:
+        unique_artifacts = list(dict.fromkeys(format_artifacts))
+        issues.append({
+            "type": "platform_format_artifact",
+            "name": "平台正文格式残留",
+            "severity": "high",
+            "platform": platform or "media",
+            "message": (
+                f"{policy.get('name', platform)}正文不应包含机器输出或Markdown格式："
+                f"{', '.join(unique_artifacts[:6])}。请重新生成或清理正文后再发布。"
+            ),
+        })
+
+    issues.extend(_platform_style_issues(content, platform, policy))
 
     min_words = policy.get("min_words")
     max_words = policy.get("max_words")

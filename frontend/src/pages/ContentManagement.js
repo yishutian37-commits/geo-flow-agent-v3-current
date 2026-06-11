@@ -850,7 +850,7 @@ function ContentManagement() {
       message.loading({ content: '反馈已记录，正在按反馈重新生成文章...', key: 'feedback-regenerate', duration: 0 });
       const generated = await contentDraftsApi.generate(task.id, {
         content_type: task.content_type || 'brand_intro',
-        platform: 'media',
+        platform: viewingDraft.platform || 'media',
         source_draft_id: viewingDraft.id,
         feedback_context: feedbackContext,
       });
